@@ -1,10 +1,12 @@
 {
   "name": "@pterodocs/docs",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "pterodocs's own documentation. A Docusaurus site, published to WordPress by pterodocs itself.",
   "private": true,
   "files": [],
-  "engines": { "node": ">=20.11" },
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
     "start": "docusaurus start",
     "build": "docusaurus build",

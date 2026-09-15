@@ -1,6 +1,72 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+### Added
+
+- **The site's own header, above the breadcrumb.** `layout.header` puts a row
+  carrying the wordmark and the menu at the top of every page. Off by default.
+
+  The menu is not declared in pterodocs's configuration: it comes from
+  `themeConfig.navbar`, the same rule sidebars and permalinks already follow, so
+  the published header matches the Docusaurus site without being written twice.
+  An entry naming a sidebar resolves to the page that sidebar opens on; a
+  dropdown keeps its children; an entry that is a control rather than a
+  destination — a search box, a locale switcher, a version dropdown — is left
+  out, having no counterpart in a published page. A destination that names a
+  published page becomes its WordPress URL. Anything unresolvable is reported
+  rather than published as a link that goes nowhere.
+
+  On a narrow screen the menu collapses to one control that opens a sheet, using
+  the checkbox mechanics the navigation already uses, with an id of its own
+  because both can be open at once.
+
+- **A warning when a published page cannot reach itself.** WordPress resolves a
+  path through its rewrite rules before it looks for a page, and any plugin may
+  add a rule that claims one — a rewrite endpoint registered elsewhere on the
+  site will shadow every page with that slug, answering 200 with a different
+  page's content. Nothing about publishing detected that. A sync now asks the
+  front end, for pages it created only, and reports `page-shadowed`. It answers
+  "unknown" rather than guessing when the served page cannot be identified, and
+  never fails a publish.
+
+- **A Docusaurus blog can be read into the model**, as an instance whose single
+  synthetic version has a sidebar of its posts, newest first — so the page tree,
+  the reconciler and the renderer treat it exactly as they treat documentation.
+  `Doc` gains `date` and `authors`. Off unless asked. Nothing publishes it yet;
+  that is the next release.
+
+- **pterodocs has its own documentation**, published by pterodocs, at
+  `/products/pterodocs/docs/`.
+
+### Changed
+
+- **The WordPress plugin serves the stylesheet pterodocs publishes**, generated
+  from it at build time rather than being a second design meaning to look like
+  the first. The two had drifted into stacking: a site with the plugin installed
+  got both, each padding a different element, so the documentation sat further
+  in than the same documentation without it. The plugin keeps only what needs a
+  script — the collapsible tree, the copy button, line numbers.
+
+- **The plugin loads where its blocks are.** Its editor script was hooked
+  unconditionally and loaded into every block editor on the site; and it
+  injected its own navigation trigger on top of the one pterodocs writes into
+  the content, giving a reader two ways to open one menu.
+
+### Fixed
+
+- The block theme's own `margin-top` on `#wp--skip-link--target`, and the inline
+  `padding-top` on the group inside it, pushed full-width documentation down the
+  page. Answering an inline style is the one thing specificity cannot do, so
+  this is the single place the stylesheet uses `!important`.
+
+- The sticky navigation had no stacking order, so it scrolled under a theme's
+  own header. It takes `z-index: 999`, with the sheet's scrim raised to stay
+  beneath it.
+
+## 0.4.2
+
+Published before it was committed, and so without an entry at the time.
 
 ### Added
 

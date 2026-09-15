@@ -1,28 +1,40 @@
 {
   "name": "@pterodocs/docusaurus",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Reads a pterodocs site model out of Docusaurus, using Docusaurus's own site loader.",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "exports": {
-    ".": { "types": "./lib/index.d.ts", "default": "./lib/index.js" },
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
     "./package.json": "./package.json"
   },
-  "files": ["lib", "src", "README.md", "LICENCE.md"],
-  "engines": { "node": ">=20.11" },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENCE.md"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
     "build": "tsc -b --force && rollup -c",
     "test": "node ../../scripts/tests.mjs integration"
   },
   "dependencies": {
-    "@pterodocs/core": "0.4.2"
+    "@pterodocs/core": "0.5.0"
   },
   "peerDependencies": {
     "@docusaurus/core": ">=3.6.0 <4.0.0"
   },
   "peerDependenciesMeta": {
-    "@docusaurus/core": { "optional": true }
+    "@docusaurus/core": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@docusaurus/core": "3.10.2",
@@ -31,7 +43,12 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
-  "repository": { "type": "git", "url": "git+https://github.com/onyx-ac/pterodocs.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onyx-ac/pterodocs.git"
+  },
   "license": "CC-BY-SA-4.0",
-  "publishConfig": { "access": "public" }
+  "publishConfig": {
+    "access": "public"
+  }
 }
