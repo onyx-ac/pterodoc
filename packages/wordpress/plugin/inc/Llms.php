@@ -74,22 +74,29 @@ final class Llms {
 	 * Register the metadata and the routes.
 	 */
 	public static function register(): void {
+		// Every type pterodocs publishes into, not only pages: a tree in a post
+		// type of its own has an llms.txt exactly as a documentation tree does.
+		$types = array_merge( array( 'page' ), PostTypes::names() );
+
 		foreach ( array( self::META_INDEX, self::META_FULL ) as $key ) {
-			register_post_meta(
-				'page',
-				$key,
-				array(
-					'single'        => true,
-					'type'          => 'string',
-					'default'       => '',
-					// Exposed over REST because that is how pterodocs writes it:
-					// with an application password, as the user running the sync.
-					'show_in_rest'  => true,
-					'auth_callback' => static function ( $allowed, $meta_key, $post_id ) {
-						return current_user_can( 'edit_post', (int) $post_id );
-					},
-				)
-			);
+			foreach ( $types as $type ) {
+				register_post_meta(
+					$type,
+					$key,
+					array(
+						'single'        => true,
+						'type'          => 'string',
+						'default'       => '',
+						// Exposed over REST because that is how pterodocs writes
+						// it: with an application password, as the user running
+						// the sync.
+						'show_in_rest'  => true,
+						'auth_callback' => static function ( $allowed, $meta_key, $post_id ) {
+							return current_user_can( 'edit_post', (int) $post_id );
+						},
+					)
+				);
+			}
 		}
 
 		// `(.+?)` is lazy so that a page whose own slug ends in `llms` cannot
@@ -127,7 +134,9 @@ final class Llms {
 			return;
 		}
 
-		$page = get_page_by_path( $path );
+		// `get_page_by_path` looks at pages unless told otherwise, so a tree
+		// published into a post type of its own would never be found.
+		$page = get_page_by_path( $path, OBJECT, array_merge( array( 'page' ), PostTypes::names() ) );
 		if ( ! $page instanceof \WP_Post ) {
 			return;
 		}
@@ -186,7 +195,7 @@ final class Llms {
 
 		$roots = get_posts(
 			array(
-				'post_type'        => 'page',
+				'post_type'        => array_merge( array( 'page' ), PostTypes::names() ),
 				'post_status'      => 'publish',
 				'meta_key'         => self::META_INDEX, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
 				'fields'           => 'ids',
@@ -248,7 +257,7 @@ final class Llms {
 	 * than a mechanism. It costs one link element on documentation pages only.
 	 */
 	public static function link_tag(): void {
-		if ( ! is_singular( 'page' ) ) {
+		if ( ! is_singular( array_merge( array( 'page' ), PostTypes::names() ) ) ) {
 			return;
 		}
 

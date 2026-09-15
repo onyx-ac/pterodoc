@@ -1,6 +1,10 @@
 /** The WordPress target. */
 
 import { renderNavigationStub } from '@pterodocs/core/render';
+import {
+  OWNERSHIP_META,
+  OWNERSHIP_VALUE,
+} from '@pterodocs/core/target';
 import type {
   EnsureRequest,
   EnsureResult,
@@ -252,7 +256,14 @@ export function createWordpressTarget(
             menu_order: page.menuOrder,
             template: options.template,
           };
-          if (Object.keys(page.meta).length > 0) body.meta = page.meta;
+          const meta: Record<string, unknown> = { ...page.meta };
+
+          // A post type registers this key, so it can be written; `pages` does
+          // not, and WordPress silently drops meta it does not know. Sending it
+          // where it cannot be stored would achieve nothing and risk a 400 on
+          // a site that is strict about unregistered keys.
+          if (namespaced) meta[OWNERSHIP_META] = OWNERSHIP_VALUE;
+          if (Object.keys(meta).length > 0) body.meta = meta;
 
           if (page.date) {
             const when = toWpDate(page.date);
@@ -277,8 +288,15 @@ export function createWordpressTarget(
             // page itself matters more than either, so try again without them.
             const status = (error as { status?: number }).status;
             if (status === 400 && (body.meta || body.template)) {
-              delete body.meta;
               delete body.template;
+              // Everything but the ownership marker, which is not decoration:
+              // without it nothing can tell later that pterodocs wrote this,
+              // and prune and purge would leave it standing forever. Its own
+              // post type registers the key, so if this is refused too the
+              // problem is not the key and the error is worth raising.
+              if (namespaced) body.meta = { [OWNERSHIP_META]: OWNERSHIP_VALUE };
+              else delete body.meta;
+
               warnings.push(
                 `${page.path || '(root)'}: WordPress refused the template or the metadata, so the page was published without them.`,
               );

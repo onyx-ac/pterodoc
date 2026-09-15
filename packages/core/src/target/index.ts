@@ -5,6 +5,7 @@
  * only ever sees what is declared here.
  */
 
+export { OWNERSHIP_META, OWNERSHIP_VALUE } from './target';
 export type {
   EnsureRequest,
   EnsureResult,

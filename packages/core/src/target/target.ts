@@ -35,6 +35,21 @@ export interface TargetCapabilities {
   supportsDrafts: boolean;
 }
 
+/**
+ * Metadata key marking a page as one pterodocs wrote.
+ *
+ * Ownership is normally read off the page's own markup, which works because a
+ * documentation page always carries the generated layout. A page published
+ * with no navigation and no breadcrumb carries no generated class at all --
+ * and then prune and purge stop recognising it, which is the failure that
+ * leaves published pages nobody can clean up. Targets that can store metadata
+ * write this instead; the markup test remains the fallback.
+ */
+export const OWNERSHIP_META = '_pterodocs_source';
+
+/** The value that key carries. */
+export const OWNERSHIP_VALUE = 'pterodocs';
+
 /** A page as it exists on the target. */
 export interface RemotePage {
   id: number;

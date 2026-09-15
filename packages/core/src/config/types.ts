@@ -162,6 +162,54 @@ export interface LlmsConfig {
   description?: string;
 }
 
+/**
+ * Publishing the site's blog, rather than its documentation.
+ *
+ * A blog is not documentation and does not want to be published as one. It is
+ * dated, it accumulates, and its index is an archive ordered newest first --
+ * which WordPress generates for a post type but not for a page. So `--blog`
+ * publishes into a custom post type the pterodocs plugin registers, and the
+ * settings that differ live here rather than forcing a second config file.
+ *
+ * Everything not named here is taken from the run it is folded over: the same
+ * site, the same credentials, the same class prefix, the same locale handling.
+ */
+export interface BlogConfig {
+  /**
+   * Which blog instance to publish.
+   *
+   * Only needed when the site has more than one; publishing several at once
+   * would be several trees in one run, which this deliberately is not.
+   */
+  instance?: string;
+  /**
+   * Path the archive is served from, e.g. `/products/docstack/releases`.
+   *
+   * It is the post type's rewrite base, not a page. Nothing is published at
+   * it -- WordPress generates the index.
+   */
+  base?: string;
+  /** Post type to publish into. Must match what the plugin registers. */
+  postType?: string;
+  /** Its REST base. Defaults to the post type's name, which is what the plugin uses. */
+  restBase?: string;
+  /** Taxonomy that carries the posts' tags, or '' to publish no tags. */
+  taxonomy?: string;
+  /** Status applied to every post. Defaults to the target's. */
+  status?: 'publish' | 'draft' | 'private';
+  /** Template slug. Defaults to none, whatever the documentation uses. */
+  template?: string;
+  /** Layout overrides. `nav` is forced to `none`: there is no root to list from. */
+  layout?: Partial<PageLayout>;
+  /**
+   * Output subdirectory, below the configured one.
+   *
+   * A separate directory because writing artefacts clears the one it writes
+   * to, so sharing it would mean each run destroyed the other's output.
+   */
+  out?: string;
+}
+
 /** A pterodocs configuration file. */
 export interface PterodocsConfig {
   site?: SiteConfig;
@@ -172,6 +220,8 @@ export interface PterodocsConfig {
   media?: MediaConfig;
   output?: OutputConfig;
   llms?: LlmsConfig;
+  /** Publishing the blog, for a run given `--blog`. */
+  blog?: BlogConfig;
   /** With `--strict`, an issue at this severity or above fails the run. */
   strict?: Severity;
 }

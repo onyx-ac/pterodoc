@@ -73,6 +73,7 @@ export default function pterodocsPlugin(
       const model = toSiteModel({ props }, {
         siteDir: props.siteDir,
         instances: config.instances,
+        blog: config.publish === 'blog',
         versions: config.versions,
         includeDrafts: config.includeDrafts,
       });

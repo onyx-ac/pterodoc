@@ -60,6 +60,17 @@ final class Assets {
 			return self::$should_load;
 		}
 
+		// A post type registered for pterodocs holds nothing but what pterodocs
+		// published, so it does not have to prove it in its markup. It often
+		// cannot: a release note with no navigation column and no breadcrumb
+		// carries no generated class at all.
+		$types = PostTypes::names();
+		if ( $types && ( is_singular( $types ) || is_post_type_archive( $types ) ) ) {
+			self::$should_load = true;
+
+			return true;
+		}
+
 		$content = self::content();
 
 		if ( '' === $content ) {

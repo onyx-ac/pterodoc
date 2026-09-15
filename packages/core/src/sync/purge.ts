@@ -19,7 +19,20 @@
  */
 
 import { isGeneratedPage } from '../render/page';
-import type { RemotePage, TargetSession } from '../target/target';
+import { OWNERSHIP_META, OWNERSHIP_VALUE, type RemotePage, type TargetSession } from '../target/target';
+
+/**
+ * Whether pterodocs wrote this page.
+ *
+ * Two answers, either of which is enough. The marker is definitive where the
+ * target could store one; the generated layout is what every page published
+ * before there was a marker carries, and what a target with no metadata still
+ * has to be judged on.
+ */
+export function isOwnPage(page: RemotePage, classPrefix: string): boolean {
+  if (page.meta && page.meta[OWNERSHIP_META] === OWNERSHIP_VALUE) return true;
+  return isGeneratedPage(page.content ?? '', classPrefix);
+}
 
 /** What a purge would do, or did. */
 export interface PurgeReport {
@@ -105,9 +118,8 @@ export async function purgeTree(
     // The index carries no content, so each candidate has to be read before it
     // can be judged. Worth the requests: the alternative is deleting on faith.
     const full = await session.fetchPage(page.id);
-    const content = full.content ?? '';
 
-    if (!isGeneratedPage(content, options.classPrefix)) {
+    if (!isOwnPage(full, options.classPrefix)) {
       kept.push(full);
       log(`kept ${page.link} — not written by pterodocs`);
       continue;

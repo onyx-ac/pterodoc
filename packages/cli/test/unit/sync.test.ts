@@ -752,3 +752,62 @@ test('a post dated ahead of now is scheduled, said so, and not fought over', asy
   assert.equal(plan.summary['update'], undefined, JSON.stringify(plan.summary));
   await t.cleanup();
 });
+
+/**
+ * A full `--blog` run: the config profile selects everything, rather than the
+ * test setting the seven scalars it happens to know about.
+ */
+async function blogRun() {
+  const fake = createFakeWp({ restBase: 'pterodocs_release' });
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pterodocs-out-'));
+  // No `outDir` of its own: the profile decides it, and that is the thing
+  // under test in the second case below.
+  const config = resolveConfig({
+    flags: { blog: true },
+    env: { WP_URL: 'https://example.test', WP_USER: 'someone', WP_APP_PASSWORD: 'secret' },
+    file: {
+      target: { root: '/products/docstack', base: 'docs' },
+      render: { classPrefix: 'x' },
+      media: { upload: false },
+      blog: { base: '/products/docstack/releases' },
+    },
+    fileDir: outDir,
+  });
+
+  return withBlog(config, fake);
+}
+
+test('a --blog run publishes into the post type, with no page anywhere', async () => {
+  const t = await blogRun();
+  const { plan } = await t.run();
+
+  assert.equal(plan.summary['create-root'], undefined, 'it created stub pages');
+  assert.deepEqual(t.fake.pages.map((page) => page.slug), ['v2']);
+
+  const post = t.fake.pages[0]!;
+  assert.equal(post.parent, 0, 'it hangs from a page that does not exist');
+  assert.equal(post.menu_order, 0, 'a newest-first archive was numbered');
+  assert.equal(post.date_gmt, '2026-01-01T09:30:00');
+  assert.equal(post.meta['_pterodocs_source'], 'pterodocs', 'nothing marks it as ours');
+
+  // The index is the archive WordPress generates, so nothing may claim to list
+  // the children of a page -- `parentPageID: 0` is every page on the site.
+  assert.equal(post.content.raw.includes('page-list'), false, post.content.raw.slice(0, 300));
+
+  const { plan: second } = await t.run();
+  assert.equal(second.summary['create'], undefined);
+  assert.equal(second.summary['update'], undefined);
+  assert.equal(second.summary['unchanged'], 1);
+  await t.cleanup();
+});
+
+test('a --blog run writes where a docs run would not overwrite it', async () => {
+  // Writing the artefacts clears the directory they go into, so sharing one
+  // would mean whichever run went second destroyed the other's output.
+  const t = await blogRun();
+  await t.run();
+
+  assert.equal(path.basename(t.config.outDir), 'blog', t.config.outDir);
+  assert.ok((await fs.readdir(t.config.outDir)).includes('pages'));
+  await t.cleanup();
+});

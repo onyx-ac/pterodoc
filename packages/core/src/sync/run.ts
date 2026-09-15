@@ -20,7 +20,6 @@ import type { SourceReader } from '../model/reader';
 import { renderDoc, excerptFor } from '../render/index';
 import {
   composePage,
-  isGeneratedPage,
   renderVersionBanner,
   type HeaderLike,
   type HeaderLink,
@@ -32,6 +31,7 @@ import { collectImages, resolveImage } from '../render/images';
 import type { LinkResolver } from '../render/links';
 import type { MediaRef, RenderedPage, Target, TargetSession } from '../target/target';
 import type { ResolvedConfig } from '../config/load';
+import { isOwnPage } from './purge';
 import { summarise, type Action, type Plan } from './plan';
 import { writeArtifacts, type Artifacts, type ManifestEntry } from './artifacts';
 import {
@@ -387,6 +387,15 @@ async function syncVersion(input: SyncVersionInput): Promise<{
   const publishesRoot = target?.capabilities.publishesTreeRoot !== false;
   const nodes = publishesRoot ? [tree.root, ...tree.chain] : tree.chain;
 
+  /**
+   * Where a page sits among its siblings.
+   *
+   * Zero throughout where the order is not to be published: a newest-first
+   * archive numbered in sidebar order renumbers every older post the moment a
+   * new one is written, and rewrites the whole tree on the next run.
+   */
+  const orderOf = (node: PageNode): number => (config.menuOrder === 'none' ? 0 : node.menuOrder);
+
   /** The id a node hangs from, or null while it is not known. */
   const parentOf = (node: PageNode): number | null =>
     node.parent && (publishesRoot || node.parent.path !== '')
@@ -407,7 +416,7 @@ async function syncVersion(input: SyncVersionInput): Promise<{
       slug: node.slug,
       parentId,
       title: node.title,
-      menuOrder: node.menuOrder,
+      menuOrder: orderOf(node),
       isRoot: node.path === '',
     });
     for (const warning of result.warnings) {
@@ -554,7 +563,7 @@ async function syncVersion(input: SyncVersionInput): Promise<{
         // page under the documentation root, and trashing it because this run
         // did not account for it would be pterodocs deleting someone else's work.
         const full = await session.fetchPage(page.id);
-        if (!isGeneratedPage(full.content ?? '', config.classPrefix)) {
+        if (!isOwnPage(full, config.classPrefix)) {
           issues.add({
             code: 'prune-skipped-foreign',
             severity: 'info',
@@ -716,7 +725,7 @@ function renderPageFor(input: {
       title: node.title,
       content,
       excerpt,
-      menuOrder: node.menuOrder,
+      menuOrder: config.menuOrder === 'none' ? 0 : node.menuOrder,
       meta,
       ...(doc?.date ? { date: doc.date } : {}),
       file: doc?.sourceRelativePath,

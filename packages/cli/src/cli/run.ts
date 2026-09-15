@@ -70,12 +70,20 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 /** Build the reader the commands share. */
-function readerFor(config: ResolvedConfig, reporter: Reporter): SourceReader {
+function readerFor(
+  config: ResolvedConfig,
+  reporter: Reporter,
+  /** Read everything, whichever tree this run came for. Used by `capture`. */
+  everything = false,
+): SourceReader {
   if (config.modelFile) return createCaptureReader(config.modelFile);
   return createDocusaurusReader({
     siteDir: config.siteDir,
     configPath: config.docusaurusConfig,
-    instances: config.instances,
+    instances: everything ? 'all' : config.instances,
+    // Read the blog only for a run that came for it. `instances` is already
+    // empty in that case, so a blog run loads the blog and nothing else.
+    blog: everything || config.publish === 'blog',
     versions: config.versions,
     includeDrafts: config.includeDrafts,
     warn: (message) => reporter.issue({ code: 'docusaurus-version', severity: 'warning', message }),
@@ -94,10 +102,11 @@ async function commandSync(
   const renderOnly = render || config.offline;
 
   const where = `/${[...config.rootSegments, ...config.baseSegments].join('/')}/`;
+  const what = config.publish === 'blog' ? 'the blog' : 'the documentation';
   reporter.info(
     renderOnly
-      ? `Rendering the documentation for ${where}.`
-      : `${config.dryRun ? 'Planning' : 'Publishing'} the documentation to ${config.targetUrl}${where} as ${config.status}.`,
+      ? `Rendering ${what} for ${where}.`
+      : `${config.dryRun ? 'Planning' : 'Publishing'} ${what} to ${config.targetUrl}${where} as ${config.status}.`,
   );
 
   const { plan } = await runSync(config, {
@@ -162,7 +171,10 @@ async function commandCapture(
   reporter: Reporter,
 ): Promise<number> {
   const file = parsed.capture ?? path.join(config.outDir, 'model.json');
-  const model = await readerFor(config, reporter).read();
+  // Everything, so one capture serves a docs run and a blog run alike --
+  // otherwise `--model` would quietly publish nothing for whichever of the two
+  // the capture was not taken for.
+  const model = await readerFor(config, reporter, true).read();
   await writeCapture(file, model);
   const docs = model.instances.reduce(
     (total, instance) =>
@@ -180,6 +192,7 @@ async function commandDoctor(config: ResolvedConfig, reporter: Reporter): Promis
   reporter.info(`  site        ${config.siteDir}`);
   reporter.info(`  target      ${config.targetUrl || 'not set'}`);
   reporter.info(`  root path   /${[...config.rootSegments, ...config.baseSegments].join('/')}/`);
+  reporter.info(`  publishing  ${config.publish === 'blog' ? `the blog, into ${config.restBase}` : 'the documentation, as pages'}`);
   reporter.info(`  credentials ${config.user ? `as ${config.user}` : 'missing'}`);
 
   const reader = readerFor(config, reporter);

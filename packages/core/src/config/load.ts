@@ -55,6 +55,8 @@ export interface ConfigFlags {
   apply?: boolean | undefined;
   offline?: boolean | undefined;
   noMedia?: boolean | undefined;
+  /** Publish the site's blog into its own post type, rather than the docs. */
+  blog?: boolean | undefined;
   strict?: boolean | undefined;
   envFile?: string | undefined;
 }
@@ -103,6 +105,16 @@ export interface ResolvedConfig {
    * See `WordpressTargetOptions.ownership`.
    */
   ownership: 'tree' | 'namespace';
+  /** Taxonomy carrying a post's tags, or '' to publish none. */
+  taxonomy: string;
+  /**
+   * Where a page's position among its siblings comes from.
+   *
+   * `sidebar` numbers pages in sidebar order. `none` sends no position at all,
+   * which is what a dated archive wants: its sidebar is newest-first, so one
+   * new post would renumber every existing one and rewrite the whole tree.
+   */
+  menuOrder: 'sidebar' | 'none';
   docsTitle: string;
   status: 'publish' | 'draft' | 'private';
   template: string;
@@ -314,11 +326,29 @@ export function resolveConfig(input: {
     throw new ConfigError(`Layout alignment must be "", "wide" or "full" (got "${layout.align}").`);
   }
 
+  // Publishing the blog is the same run with a handful of values changed, so
+  // it folds down into the same shape rather than becoming a second one. What
+  // it may not change is the axis: no field below becomes per-tree.
+  const blogging = flags.blog === true;
+  const blog = file.blog ?? {};
+  const postType = blog.postType || 'pterodocs_release';
+
+  if (blogging) {
+    Object.assign(layout, {
+      // There is no root page, so there is nothing for `page-list` to list
+      // from. Forced rather than defaulted, and checked below in case the
+      // file asked for it explicitly.
+      nav: 'none',
+      kind: 'single',
+      ...blog.layout,
+    });
+  }
+
   // `page-list` lists the children of a page id, and a tree with no root page
   // has no id to give it. The block reads a missing parent as the site root
   // and lists every page on the site, so this cannot be allowed to be a
   // fallback -- it has to be an error.
-  const ownership: ResolvedConfig['ownership'] = 'tree';
+  const ownership: ResolvedConfig['ownership'] = blogging ? 'namespace' : 'tree';
   if (ownership !== 'tree' && layout.nav === 'page-list') {
     throw new ConfigError(
       'layout.nav cannot be "page-list" here: this tree has no root page, so there is no page whose children the block could list. Set it to "none".',
@@ -340,7 +370,17 @@ export function resolveConfig(input: {
   const outDir = path.resolve(
     baseDir,
     pick(flags.out, fromEnv(env, 'OUT', [], notices), output.dir) ?? '.pterodocs',
+    // A subdirectory of its own: writing the artefacts clears the directory
+    // they go into, so a blog run sharing one with the documentation would
+    // destroy whatever the last docs run wrote, and the other way round.
+    ...(blogging ? [blog.out || 'blog'] : []),
   );
+
+  if (blogging && !blog.base) {
+    throw new ConfigError(
+      'Publishing the blog needs `blog.base`: the path its archive is served from, e.g. "/products/docstack/releases". It is the post type’s rewrite base, and the pterodocs plugin has to register the same one.',
+    );
+  }
 
   return {
     siteDir,
@@ -348,9 +388,15 @@ export function resolveConfig(input: {
     docusaurusConfig: pick(flags.docusaurusConfig, site.config),
     modelFile: flags.model ? path.resolve(baseDir, flags.model) : undefined,
 
-    instances: flags.instance && flags.instance.length > 0 ? flags.instance : (site.instances ?? 'all'),
-    sidebars: site.sidebars ?? 'all',
-    publish: 'docs',
+    instances: blogging
+      ? (blog.instance ? [blog.instance] : [])
+      : flags.instance && flags.instance.length > 0
+        ? flags.instance
+        : (site.instances ?? 'all'),
+    // A blog carries its posts on one synthetic sidebar of that name, so
+    // naming it keeps a docs sidebar from being swept in beside them.
+    sidebars: blogging ? ['blog'] : (site.sidebars ?? 'all'),
+    publish: blogging ? 'blog' : 'docs',
     versions,
     locales,
     includeDrafts: site.includeDrafts === true,
@@ -361,13 +407,22 @@ export function resolveConfig(input: {
     targetUrl,
     user,
     appPassword,
-    rootSegments: toSlugSegments(rootPath, 'the target root path'),
-    baseSegments: toSlugSegments(basePath, 'the target base'),
-    restBase: 'pages',
+    // The whole path goes in the root, with nothing below it: the base exists
+    // to name a page under the root, and there is no page here at all.
+    rootSegments: toSlugSegments(
+      blogging ? (blog.base ?? '') : rootPath,
+      blogging ? 'the blog base' : 'the target root path',
+    ),
+    baseSegments: blogging ? [] : toSlugSegments(basePath, 'the target base'),
+    restBase: blogging ? (blog.restBase || postType) : 'pages',
     ownership,
-    docsTitle: target.title ?? '',
-    status,
-    template: target.template ?? '',
+    taxonomy: blogging ? (blog.taxonomy ?? '') : '',
+    // Numbering a newest-first archive means one new post renumbers every
+    // older one, and rewrites the lot on the next run.
+    menuOrder: blogging ? 'none' : 'sidebar',
+    docsTitle: blogging ? '' : (target.title ?? ''),
+    status: blogging ? (blog.status ?? status) : status,
+    template: blogging ? (blog.template ?? '') : (target.template ?? ''),
     lang: pick(fromEnv(env, 'WP_LANG', ['WP_LANG'], notices), target.lang) ?? '',
     metaDescriptionKey: target.meta?.description ?? '',
     methodOverride:
@@ -405,9 +460,11 @@ export function resolveConfig(input: {
     outDir,
     writePages: output.pages !== false,
     llms: {
-      index: llms.index !== false,
-      full: llms.full !== false,
-      publish: llms.publish !== false,
+      // Off for a blog: llms.txt describes a documentation set, and it is
+      // stored on the tree's root page -- which this tree does not have.
+      index: !blogging && llms.index !== false,
+      full: !blogging && llms.full !== false,
+      publish: !blogging && llms.publish !== false,
       title: llms.title ?? '',
       description: llms.description ?? '',
     },

@@ -113,3 +113,78 @@ test('a configuration file is discovered by name, in order', () => {
   assert.equal(discoverConfigFile(siteDir, { existsSync: () => false }), undefined);
   assert.equal(CONFIG_NAMES[0], 'pterodocs.config.mjs');
 });
+
+/** A run given `--blog`, with a config that names where it goes. */
+function blogConfig(over: Record<string, unknown> = {}) {
+  return resolveConfig({
+    flags: { blog: true },
+    env: CREDENTIALS,
+    file: {
+      target: { root: '/products/docstack', base: 'docs' },
+      blog: { base: '/products/docstack/releases', ...over },
+    },
+    fileDir: path.resolve('/site'),
+  });
+}
+
+test('the blog profile folds down into the same shape, with different values', () => {
+  const config = blogConfig();
+
+  assert.equal(config.publish, 'blog');
+  assert.equal(config.ownership, 'namespace');
+  assert.equal(config.restBase, 'pterodocs_release');
+  // The whole path is the root: the base names a page under it, and there is
+  // no page here at all.
+  assert.deepEqual(config.rootSegments, ['products', 'docstack', 'releases']);
+  assert.deepEqual(config.baseSegments, []);
+  assert.deepEqual(config.sidebars, ['blog']);
+  assert.equal(config.layout.nav, 'none');
+  assert.equal(config.menuOrder, 'none');
+  assert.deepEqual(config.llms, { index: false, full: false, publish: false, title: '', description: '' });
+});
+
+test('a docs run is untouched by a blog section being present', () => {
+  const config = resolveConfig({
+    env: CREDENTIALS,
+    file: {
+      target: { root: '/products/docstack', base: 'docs' },
+      blog: { base: '/products/docstack/releases' },
+    },
+  });
+
+  assert.equal(config.publish, 'docs');
+  assert.equal(config.ownership, 'tree');
+  assert.equal(config.restBase, 'pages');
+  assert.equal(config.menuOrder, 'sidebar');
+  assert.deepEqual(config.rootSegments, ['products', 'docstack']);
+  assert.deepEqual(config.baseSegments, ['docs']);
+});
+
+test('the blog writes to a directory of its own', () => {
+  // Writing the artefacts clears the directory they go into, so one directory
+  // for both runs means each one destroys what the other wrote.
+  const docs = resolveConfig({ env: CREDENTIALS, fileDir: path.resolve('/site') });
+  assert.notEqual(blogConfig().outDir, docs.outDir);
+  assert.equal(blogConfig().outDir.startsWith(docs.outDir), true);
+});
+
+test('publishing the blog somewhere unnamed is refused rather than guessed', () => {
+  assert.throws(
+    () => resolveConfig({ flags: { blog: true }, env: CREDENTIALS, file: {} }),
+    /blog\.base/,
+  );
+});
+
+test('a blog cannot ask for a page list, because it has no page to list from', () => {
+  // `core/page-list` reads a missing parent as the site root and lists every
+  // page on the site. Silently ignoring the setting would publish that.
+  assert.throws(
+    () => blogConfig({ layout: { nav: 'page-list' } }),
+    /page-list/,
+  );
+});
+
+test('one blog instance, named when there is a choice', () => {
+  assert.deepEqual(blogConfig().instances, []);
+  assert.deepEqual(blogConfig({ instance: 'releases' }).instances, ['releases']);
+});

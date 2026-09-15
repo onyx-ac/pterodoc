@@ -40,6 +40,11 @@ final class Settings {
 		return array(
 			'classPrefix'          => 'pterodocs',
 
+			// Post types pterodocs may publish into, beyond pages. Empty by
+			// default: registering one changes a site's URLs, which is not
+			// something a plugin should do to a site that did not ask.
+			'postTypes'            => array(),
+
 			'width'                => 'full',
 			'gutter'               => '',
 			'measure'              => '',
@@ -81,6 +86,23 @@ final class Settings {
 			'type'       => 'object',
 			'properties' => array(
 				'classPrefix'           => array( 'type' => 'string' ),
+				// Named in the schema as well as in the defaults: the schema is
+				// `additionalProperties: false`, so a key missing from it is not
+				// merely undocumented -- every write of the whole option is
+				// rejected.
+				'postTypes'             => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'       => 'object',
+						'properties' => array(
+							'name'     => array( 'type' => 'string' ),
+							'base'     => array( 'type' => 'string' ),
+							'label'    => array( 'type' => 'string' ),
+							'taxonomy' => array( 'type' => 'string' ),
+						),
+						'additionalProperties' => false,
+					),
+				),
 				'width'                 => $enum( array( 'full', 'wide', 'content' ) ),
 				'gutter'                => array( 'type' => 'string' ),
 				'measure'               => array( 'type' => 'string' ),

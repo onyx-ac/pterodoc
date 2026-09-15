@@ -42,6 +42,9 @@ Target
   --only <prefix>             Restrict writes to pages under <prefix>.
   --dry-run                   Plan and render, change nothing.
   --prune                     Trash pages with no source document.
+  --blog                      Publish the site's blog into its own post type,
+                              rather than the documentation. Needs blog.base in
+                              the config, and the pterodocs plugin installed.
   --apply                     With purge, actually remove; otherwise it only reports.
   --offline                   Render only; never open a session.
   --no-media                  Skip uploads; leave image URLs as written.
@@ -101,6 +104,7 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
         only: { type: 'string' },
         'dry-run': { type: 'boolean' },
         prune: { type: 'boolean' },
+        blog: { type: 'boolean' },
         apply: { type: 'boolean' },
         offline: { type: 'boolean' },
         'no-media': { type: 'boolean' },
@@ -144,6 +148,7 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
     out: values['out'] as string | undefined,
     dryRun: values['dry-run'] as boolean | undefined,
     prune: values['prune'] as boolean | undefined,
+    blog: values['blog'] as boolean | undefined,
     apply: values['apply'] as boolean | undefined,
     offline: values['offline'] as boolean | undefined,
     noMedia: values['no-media'] as boolean | undefined,
