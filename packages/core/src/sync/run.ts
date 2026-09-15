@@ -580,13 +580,32 @@ function headerFor(
   navbar: SiteNavbar | undefined,
   tree: PageTree,
   href: (treePath: string) => string,
+  config: ResolvedConfig,
+  model: SiteModel,
 ): HeaderLike | undefined {
   if (!navbar) return undefined;
 
+  const siteUrl = (config.siteUrl || model.url).replace(/\/+$/, '');
+
   const retarget = (link: string): string => {
     if (!link) return '';
-    const node = tree.byPermalink.get(link) ?? tree.byPermalink.get(`${link.replace(/\/+$/, '')}/`);
-    return node ? href(node.path) : link;
+
+    // `pathname://` tells Docusaurus not to treat what follows as a route. What
+    // follows is a path on the Docusaurus site, so that is where it points.
+    const target = link.startsWith('pathname://') ? link.slice('pathname://'.length) : link;
+
+    // Already somewhere else entirely.
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(target) || target.startsWith('//')) return target;
+
+    const node = tree.byPermalink.get(target) ?? tree.byPermalink.get(`${target.replace(/\/+$/, '')}/`);
+    if (node) return href(node.path);
+
+    // Nothing here publishes it. A site-relative path would mean something
+    // different on the target -- and usually nothing at all -- so it becomes
+    // the absolute URL Docusaurus itself serves, which is the same answer a
+    // link inside a document gets.
+    if (!target.startsWith('/')) return target;
+    return config.unpublishedLinks === 'drop' ? '' : `${siteUrl}${target}`;
   };
 
   const convert = (item: NavbarItem): HeaderLink => ({
@@ -651,7 +670,7 @@ function renderPageFor(input: {
     }
   }
 
-  const header = headerFor(model.navbar, tree, input.href);
+  const header = headerFor(model.navbar, tree, input.href, config, model);
 
   const content = composePage({
     node,

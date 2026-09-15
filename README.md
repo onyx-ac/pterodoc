@@ -7,6 +7,8 @@
 Publishes a Docusaurus site to WordPress as a tree of native Gutenberg pages, so the
 docs you write once are indexed under your own domain without being rewritten by hand.
 
+**[Documentation](https://onyx.ac/products/pterodocs/docs/)**
+
 [Install](#install) · [Usage](#usage) · [Configuration](#configuration) · [How it works](#how-it-works) · [Plugin](#the-wordpress-plugin) · [Status](#status)
 
 </div>
@@ -74,6 +76,9 @@ export default defineConfig({
 Anything Docusaurus already knows — the site URL, base URL, route base path, locales,
 markdown format, admonition keywords — is read from your Docusaurus config and is not
 repeated here.
+
+Every option, with its default and what reads it, is at
+**<https://onyx.ac/products/pterodocs/docs/config/>** — published by pterodocs itself.
 
 ## llms.txt
 

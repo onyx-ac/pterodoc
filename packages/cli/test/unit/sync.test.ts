@@ -77,6 +77,7 @@ async function setup(overrides: Partial<ResolvedConfig> = {}, fake = createFakeW
   const reader = createMemoryReader(model);
   return {
     config,
+    model,
     reader,
     fake,
     outDir,
@@ -465,5 +466,78 @@ test('only pages that were created are checked', async () => {
   const { plan } = await t.run();
 
   assert.deepEqual(plan.issues.filter((issue) => issue.code === 'page-shadowed'), []);
+  await t.cleanup();
+});
+
+/* ---------------------------------------------------------------------- *
+ * Where a header entry points
+ * ---------------------------------------------------------------------- */
+
+/** The stored content of one published page. */
+const contentOf = (fake: FakeWp, slug: string): string =>
+  fake.pages.find((page) => page.slug === slug)!.content.raw;
+
+/** A run whose site declares a navbar covering each kind of destination. */
+async function withNavbar() {
+  const t = await setup();
+  t.config.layout = { ...t.config.layout, header: true };
+
+  const published = t.model.instances[0]!.versions[0]!.docs[0]!;
+  t.model.navbar = {
+    title: 'Fixture',
+    items: [
+      { label: 'Published', href: published.permalink, position: 'left' },
+      { label: 'Elsewhere', href: '/docs/api/reference', position: 'left' },
+      { label: 'Workbench', href: 'pathname:///app/index.html', position: 'right' },
+      { label: 'Repo', href: 'https://example.test/repo', position: 'right' },
+    ],
+  };
+  return t;
+}
+
+test('a header entry naming a published page points at the target', async () => {
+  const t = await withNavbar();
+  await t.run();
+
+  const published = t.model.instances[0]!.versions[0]!.docs[0]!;
+  const content = contentOf(t.fake, 'docs');
+
+  assert.ok(content.includes('>Published<'), 'the entry is missing');
+  assert.equal(content.includes(`href="${published.permalink}"`), false, 'it kept the Docusaurus URL');
+  assert.ok(/href="\/products\/docstack\/docs\/[^"]*">Published</.test(content), content.slice(content.indexOf('Published') - 120, content.indexOf('Published') + 20));
+  await t.cleanup();
+});
+
+test('a header entry nothing publishes points at the documentation site', async () => {
+  // A site-relative path means something different on WordPress, and usually
+  // nothing at all. It becomes the URL Docusaurus itself serves -- the same
+  // answer a link inside a document gets.
+  const t = await withNavbar();
+  await t.run();
+
+  const content = contentOf(t.fake, 'docs');
+  assert.ok(
+    content.includes(`href="${t.model.url}/docs/api/reference">Elsewhere<`),
+    content.slice(content.indexOf('Elsewhere') - 140, content.indexOf('Elsewhere') + 20),
+  );
+  await t.cleanup();
+});
+
+test('a pathname:// entry loses the prefix Docusaurus reads', async () => {
+  // Left as written it is not a URL at all, and the link goes nowhere.
+  const t = await withNavbar();
+  await t.run();
+
+  const content = contentOf(t.fake, 'docs');
+  assert.equal(content.includes('pathname://'), false, 'the prefix survived');
+  assert.ok(content.includes(`href="${t.model.url}/app/index.html">Workbench<`), 'not pointed at the site');
+  await t.cleanup();
+});
+
+test('an entry that already names a host is left alone', async () => {
+  const t = await withNavbar();
+  await t.run();
+
+  assert.ok(contentOf(t.fake, 'docs').includes('href="https://example.test/repo">Repo<'));
   await t.cleanup();
 });
