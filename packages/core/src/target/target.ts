@@ -172,6 +172,17 @@ export interface TargetSession {
    */
   publishedIndex?(): string | undefined;
   /**
+   * Where the site's blog posts are listed, whoever is asking.
+   *
+   * The same address `publishedIndex` gives during a blog run, available to a
+   * documentation run that is not publishing posts but wants to link to them:
+   * a navbar entry pointing at the Docusaurus blog has a counterpart here, and
+   * without this it could only be sent back to the Docusaurus site.
+   *
+   * Absolute, or undefined when the target has no blog or cannot find it.
+   */
+  blogIndex?(): string | undefined;
+  /**
    * Make sure everything above the documentation root exists.
    *
    * The target owns this because only it knows what a path is made of. Pages

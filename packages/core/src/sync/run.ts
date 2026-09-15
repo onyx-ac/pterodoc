@@ -510,6 +510,7 @@ async function syncVersion(input: SyncVersionInput): Promise<{
       media,
       issues,
       emitMarkdown: config.llms.full,
+      blogIndex: session?.blogIndex?.(),
       ...(banner ? { banner } : {}),
     });
     prepared.push({ node, page, locale, versionName: version.name, markdown });
@@ -648,10 +649,19 @@ function headerFor(
   href: (treePath: string) => string,
   config: ResolvedConfig,
   model: SiteModel,
+  blogIndex: string | undefined,
 ): HeaderLike | undefined {
   if (!navbar) return undefined;
 
   const siteUrl = (config.siteUrl || model.url).replace(/\/+$/, '');
+
+  // Where the site's blog is served from, read rather than assembled, so a
+  // `baseUrl` or a localised prefix is already accounted for.
+  const blogBases = model.instances
+    .filter((instance) => instance.kind === 'blog')
+    .flatMap((instance) => instance.versions.map((version) => version.pathPrefix))
+    .filter((prefix) => prefix !== '')
+    .map((prefix) => `/${prefix.replace(/^\/+|\/+$/g, '')}/`);
 
   const retarget = (link: string): string => {
     if (!link) return '';
@@ -665,6 +675,13 @@ function headerFor(
 
     const node = tree.byPermalink.get(target) ?? tree.byPermalink.get(`${target.replace(/\/+$/, '')}/`);
     if (node) return href(node.path);
+
+    // An entry naming the blog itself. Its posts are published, just not by
+    // this run and not to a path -- so the archive they are listed on is what
+    // this means here. Only the blog's own root: a link to one post is about
+    // that post, and sending it to a list of everything would be a worse
+    // answer than leaving it where it was.
+    if (blogIndex && blogBases.includes(`${target.replace(/\/+$/, '')}/`)) return blogIndex;
 
     // Nothing here publishes it. A site-relative path would mean something
     // different on the target -- and usually nothing at all -- so it becomes
@@ -702,6 +719,8 @@ function renderPageFor(input: {
   media: Map<string, { id: number; url: string }>;
   issues: IssueCollector;
   banner?: string;
+  /** Where the site's blog is listed on the target, when it knows. */
+  blogIndex?: string | undefined;
 }): { page: RenderedPage; markdown: string | undefined } {
   const { node, tree, config, model, theme, issues } = input;
   const doc = node.doc;
@@ -736,7 +755,7 @@ function renderPageFor(input: {
     }
   }
 
-  const header = headerFor(model.navbar, tree, input.href, config, model);
+  const header = headerFor(model.navbar, tree, input.href, config, model, input.blogIndex);
 
   const content = composePage({
     node,

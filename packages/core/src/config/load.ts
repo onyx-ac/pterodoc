@@ -110,11 +110,15 @@ export interface ResolvedConfig {
    */
   ownership: 'tree' | 'flat';
   /**
-   * Category the posts are filed under, outermost first.
+   * Category the blog's posts are filed under, outermost first.
    *
    * Built from the documentation's own root path plus a name for the posts, so
    * the two line up in the site's category tree even though their URLs cannot.
-   * Empty for a documentation run, which files nothing.
+   *
+   * Known on a documentation run too, whenever a blog is configured -- not to
+   * file anything, which a page has no categories for, but because the archive
+   * it names is the only address that means "the release notes", and the
+   * published header wants to link to it.
    */
   categoryPath: string[];
   /** Taxonomy carrying a post's tags, or '' to publish none. */
@@ -399,13 +403,14 @@ export function resolveConfig(input: {
   // Where the posts are filed. The documentation's own root, titled, with a
   // name for the posts below it -- so the two line up in the category tree
   // even though a post's URL is the site's to decide and cannot be moved.
-  if (blogging && !blog.category && !blog.categoryPath?.length) {
+  const filed = Boolean(blog.category || blog.categoryPath?.length);
+  if (blogging && !filed) {
     throw new ConfigError(
       'Publishing the blog needs somewhere to file the posts. Set `blog.category` to what they should be called, e.g. "Release notes" -- it is created under a category path built from `target.root`. Set `blog.categoryPath` instead for a category tree that does not follow the paths.',
     );
   }
 
-  const categoryPath = blogging
+  const categoryPath = filed
     ? (blog.categoryPath ?? [
         ...toSlugSegments(rootPath, 'the target root path').map(titleCase),
         blog.category!,

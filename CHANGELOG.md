@@ -60,6 +60,15 @@
   The blog writes to `.pterodocs/blog/`, because writing the artefacts clears
   the directory they go into.
 
+- **A header entry naming the blog points at where the posts were published.**
+  A navbar's `to: '/blog'` is right for the Docusaurus site and wrong for the
+  published one, and until now it was published as a link back to Docusaurus.
+  It now resolves to the category archive on the target — the only address that
+  means "the release notes", since each post sits wherever the permalink
+  settings put it. `docusaurus.config.ts` is not touched: it is read, as it
+  always is. Only the blog's own root is retargeted; a link to one post is
+  about that post.
+
 - **The plugin registers an ownership marker on published posts.** A post
   carries no generated layout to be recognised by — no navigation column, no
   breadcrumb — so without it nothing could tell later which posts in a blog

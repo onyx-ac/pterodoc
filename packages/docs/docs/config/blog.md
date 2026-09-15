@@ -99,23 +99,43 @@ Docusaurus blog.
 `category` or something else. WordPress includes child categories in an archive, so a parent
 lists everything below it too — `/topics/products/docstack/` shows the release notes as well.
 
-That link is the one manual step. Your Docusaurus navbar almost certainly points at your own
-blog:
+### The published header links there on its own
+
+If your navbar names the blog and you publish a [header](layout#header), the entry is pointed
+at the archive automatically. This, in `docusaurus.config.ts`:
 
 ```ts
 { to: '/blog', label: 'Releases', position: 'left' },
 ```
 
-pterodocs reads `docusaurus.config.ts` and never writes to it, so it cannot repoint that entry
-for you — and it should not guess, because the entry is right for the Docusaurus site and only
-wrong for the published one. Change it yourself when you want readers sent to WordPress:
+is published as:
+
+```html
+<a href="https://example.com/topics/products/docstack/release-notes/">Releases</a>
+```
+
+Nothing is edited by hand, and `docusaurus.config.ts` is untouched — the entry stays right for
+the Docusaurus site, where `/blog` is exactly where the blog is.
+
+It needs a `blog` section in your config so the run knows which category to look for. A
+documentation run only *reads* it: a page has no categories to be filed under, and a run that
+invented them because your config mentions a blog would be editing a taxonomy nobody asked it
+to touch.
+
+Only the blog's own root is retargeted. A link to **one** post is about that post, and sending
+it to a list of everything would be a worse answer than leaving it where it was — so it still
+points at the Docusaurus site, like any other page this run does not publish.
+
+### Linking from somewhere else
+
+Anywhere pterodocs is not generating the markup — a hand-authored WordPress page, a footer, a
+README — paste the URL the run prints. An entry that already names a host is published exactly
+as written, so you can also hard-code it in the navbar if you would rather send Docusaurus's
+own readers to WordPress too:
 
 ```ts
 { href: 'https://example.com/topics/products/docstack/release-notes/', label: 'Releases', position: 'left' },
 ```
-
-An entry that already names a host is published exactly as written, so this survives every
-subsequent sync.
 
 ## Tags
 

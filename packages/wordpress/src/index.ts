@@ -184,8 +184,14 @@ export function createWordpressTarget(
 
           // Once for the whole run: every post is filed under the same one,
           // and walking the path is a request per level.
+          //
+          // A documentation run resolves it too, but must never create it: it
+          // files nothing, and inventing categories on a site because its
+          // config mentions a blog would be pterodocs changing a taxonomy
+          // nobody asked it to touch. Lookup-only is what `dryRun` already
+          // means to `ensurePath`.
           if (options.categoryPath.length > 0 && categoryId === undefined) {
-            const categories = await loadTermIndex(client, 'categories', dryRun);
+            const categories = await loadTermIndex(client, 'categories', dryRun || !flat);
             const { id, link, warnings } = await categories.ensurePath(options.categoryPath);
             categoryId = id ?? 0;
             categoryLink = link;
@@ -198,6 +204,12 @@ export function createWordpressTarget(
           // Only for a flat tree. A documentation tree is at its own path,
           // which says where it is perfectly well.
           return flat ? categoryLink : undefined;
+        },
+
+        blogIndex(): string | undefined {
+          // The same archive, asked for by a run that is not publishing into
+          // it -- the documentation, wanting somewhere to point its header.
+          return categoryLink;
         },
 
         async ensureRootParent(): Promise<{
@@ -312,7 +324,9 @@ export function createWordpressTarget(
             ...(flat ? {} : { parent: parentId, menu_order: page.menuOrder }),
           };
 
-          if (categoryId) body.categories = [categoryId];
+          // Only a post has categories. A page would silently drop the field,
+          // and asking it to is how a docs run would end up filing pages.
+          if (flat && categoryId) body.categories = [categoryId];
           warnings.push(...categoryWarnings.splice(0));
           const meta: Record<string, unknown> = { ...page.meta };
 

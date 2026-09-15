@@ -81,9 +81,12 @@ function readerFor(
     siteDir: config.siteDir,
     configPath: config.docusaurusConfig,
     instances: everything ? 'all' : config.instances,
-    // Read the blog only for a run that came for it. `instances` is already
-    // empty in that case, so a blog run loads the blog and nothing else.
-    blog: everything || config.publish === 'blog',
+    // A blog run reads the blog because it publishes it; `instances` is
+    // already empty there, so it loads the blog and nothing else. A docs run
+    // reads it only to learn where the site serves it from, so the header can
+    // point an entry naming the blog at the archive rather than back at the
+    // Docusaurus site. It is filtered out of publishing either way.
+    blog: everything || config.publish === 'blog' || config.categoryPath.length > 0,
     navbar: everything || config.layout.header,
     versions: config.versions,
     includeDrafts: config.includeDrafts,

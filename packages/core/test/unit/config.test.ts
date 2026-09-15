@@ -194,9 +194,17 @@ test('a docs run is untouched by a blog section being present', () => {
   assert.equal(config.ownership, 'tree');
   assert.equal(config.restBase, 'pages');
   assert.equal(config.menuOrder, 'sidebar');
-  assert.deepEqual(config.categoryPath, []);
   assert.deepEqual(config.rootSegments, ['products', 'docstack']);
   assert.deepEqual(config.baseSegments, ['docs']);
+
+  // It does know where the blog is filed, though. Not to file anything -- a
+  // page has no categories -- but because the header wants to link there.
+  assert.deepEqual(config.categoryPath, ['Products', 'Docstack', 'Release notes']);
+});
+
+test('a run with no blog section knows of no category at all', () => {
+  const config = resolveConfig({ env: CREDENTIALS, file: { target: { root: '/products/docstack' } } });
+  assert.deepEqual(config.categoryPath, []);
 });
 
 test('the blog writes to a directory of its own', () => {

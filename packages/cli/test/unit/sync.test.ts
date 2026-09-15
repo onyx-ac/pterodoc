@@ -966,3 +966,86 @@ test('a docs run still reports its own path, not an archive', async () => {
   assert.equal(plan.rootPath, '/products/docstack/docs/');
   await t.cleanup();
 });
+
+/**
+ * A documentation run on a site that also has a blog, with a navbar entry
+ * naming it -- which is what every Docusaurus site with release notes looks
+ * like.
+ */
+async function docsBesideBlog() {
+  const fake = createFakeWp({
+    taxonomy: 'tags',
+    terms: [
+      { id: 10, name: 'Products', slug: 'products', parent: 0, taxonomy: 'categories', link: 'https://example.test/topics/products/' },
+      { id: 11, name: 'Docstack', slug: 'docstack', parent: 10, taxonomy: 'categories', link: 'https://example.test/topics/products/docstack/' },
+      { id: 12, name: 'Release notes', slug: 'release-notes', parent: 11, taxonomy: 'categories', link: 'https://example.test/topics/products/docstack/release-notes/' },
+    ],
+  });
+
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pterodocs-out-'));
+  const config = {
+    ...resolveConfig({
+      env: { WP_URL: 'https://example.test', WP_USER: 'someone', WP_APP_PASSWORD: 'secret' },
+      file: {
+        site: { sidebars: ['docs'] },
+        target: { root: '/products/docstack', base: 'docs' },
+        render: { classPrefix: 'x' },
+        media: { upload: false },
+        blog: { category: 'Release notes' },
+      },
+      fileDir: outDir,
+    }),
+    outDir,
+    layout: { ...DEFAULT_LAYOUT, header: true },
+  };
+
+  const t = await withBlog(config, fake);
+  t.model.navbar = {
+    title: 'Fixture',
+    items: [
+      { label: 'Releases', href: '/blog', position: 'left' },
+      { label: 'One release', href: '/blog/v2', position: 'left' },
+    ],
+  };
+  return t;
+}
+
+test('a header entry naming the blog points at the archive, not at Docusaurus', async () => {
+  // The posts are published -- just not by this run, and not to a path. The
+  // archive they are listed on is the only address that means "the releases".
+  const t = await docsBesideBlog();
+  await t.run();
+
+  const content = contentOf(t.fake, 'docs');
+  assert.ok(
+    content.includes('href="https://example.test/topics/products/docstack/release-notes/">Releases<'),
+    content.slice(content.indexOf('Releases') - 200, content.indexOf('Releases') + 40),
+  );
+  await t.cleanup();
+});
+
+test('a header entry naming one post is left where it was', async () => {
+  // A link to a post is about that post. Sending it to a list of everything
+  // would be a worse answer than leaving it on the Docusaurus site.
+  const t = await docsBesideBlog();
+  await t.run();
+
+  const content = contentOf(t.fake, 'docs');
+  assert.ok(content.includes(`href="${t.model.url}/blog/v2">One release<`), 'it was retargeted anyway');
+  await t.cleanup();
+});
+
+test('a docs run files nothing and creates no categories', async () => {
+  // It resolves the category to link to it. Inventing one on a site because
+  // the config mentions a blog would be pterodocs editing a taxonomy nobody
+  // asked it to touch.
+  const t = await docsBesideBlog();
+  const before = t.fake.terms.length;
+  await t.run();
+
+  assert.equal(t.fake.terms.length, before, 'it created a category');
+  for (const call of t.fake.calls.filter((one) => one.routedAs === 'POST')) {
+    assert.equal(call.body['categories'], undefined, 'a page was filed under a category');
+  }
+  await t.cleanup();
+});
