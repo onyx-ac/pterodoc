@@ -284,14 +284,32 @@ test('`!important` is used only where an inline style is being answered', () => 
   }
 });
 
-test('the navigation stacks above the theme’s own chrome', () => {
-  // A sticky column with no stacking order scrolls under a theme's sticky
-  // header, which is what this answers.
+test('only the sheet stacks above the theme’s own chrome', () => {
+  // A sheet is laid over the page and has to clear whatever the theme stacks.
+  // The sticky column is beside the document, with nothing to rise above, and
+  // lifting it there would put the navigation over the site's own header.
   const css = stylesheetFor(createTheme({ classPrefix: 'x' }));
-  const nav = css.split(String.fromCharCode(10)).find((line) => line.startsWith(':where(.x-docs-nav){'));
+  const lines = css.split(String.fromCharCode(10));
 
-  assert.ok(nav, 'the navigation rule is missing');
-  assert.ok(nav!.includes('z-index:999'), nav);
+  const column = lines.find((line) => line.startsWith(':where(.x-docs-nav){'));
+  assert.ok(column, 'the navigation rule is missing');
+  assert.equal(column!.includes('z-index'), false, column);
+
+  const sheet = lines.find((line) => line.includes('.x-docs-nav{position:fixed'));
+  assert.ok(sheet?.includes('z-index:999'), sheet);
+});
+
+test('nothing laid over the page carries a margin', () => {
+  // WordPress gives every child of a group a block-gap margin, and a margin
+  // applies to a fixed element too -- so `inset:0` would put the backdrop at
+  // the top and the margin would push it down, showing a strip of the page.
+  const css = stylesheetFor(createTheme({ classPrefix: 'x' }));
+
+  for (const fragment of ['.x-docs-scrim{', '.x-docs-header-scrim{', '.x-docs-nav{position:fixed', '.x-docs-header-nav{position:fixed']) {
+    const rule = css.split(String.fromCharCode(10)).find((line) => line.includes(fragment));
+    assert.ok(rule, `no rule for ${fragment}`);
+    assert.ok(rule!.includes('margin:0'), `${fragment} can be pushed by a margin`);
+  }
 });
 
 test('the sheet still stacks over its own scrim', () => {
@@ -344,9 +362,14 @@ function composeWithHeader(overrides: Partial<typeof DEFAULT_LAYOUT> = {}): stri
   });
 }
 
-/** The markup only. The class names appear in the stylesheet too. */
+/**
+ * The markup only. The class names appear in the stylesheet too, so an
+ * assertion over the whole composed page would pass whatever the markup did.
+ * Everything after the stylesheet is markup, the header included -- it sits
+ * beside the stylesheet now rather than inside the document column.
+ */
 function markupOf(composed: string): string {
-  return composed.slice(composed.indexOf('<!-- wp:columns'));
+  return composed.slice(composed.indexOf('</style>'));
 }
 
 test('there is no header unless the layout asks for one', () => {
@@ -397,4 +420,40 @@ test('the header sits above the breadcrumb row', () => {
   const composed = markupOf(composeWithHeader());
 
   assert.ok(composed.indexOf('x-docs-header') < composed.indexOf('x-docs-bar'), 'wrong order');
+});
+
+test('the header is padded in rather than margined in', () => {
+  // Full width is achieved with a negative margin, so a margin here would be
+  // arguing with the theme. Padding sits inside it, and it is the same move
+  // the columns below make -- which is what lines the two up.
+  const css = stylesheetFor(createTheme({ classPrefix: 'x' }));
+  const rule = css.split(String.fromCharCode(10)).find((line) => line.startsWith('.alignfull.x-docs-header{'));
+
+  assert.ok(rule, 'the header has no width rule');
+  assert.ok(rule!.includes('padding-inline'), rule);
+  assert.equal(rule!.includes('margin'), false, rule);
+  assert.ok(rule!.includes('--wp--style--root--padding-left'), 'it should read the theme’s own padding');
+});
+
+test('the header keeps a rule under it, to separate it from the page', () => {
+  const css = stylesheetFor(createTheme({ classPrefix: 'x' }));
+  const rule = css.split(String.fromCharCode(10)).find((line) => line.startsWith(':where(.x-docs-header){'));
+
+  assert.ok(rule?.includes('border-bottom'), rule);
+});
+
+test('the header is a child of the content, not of the document column', () => {
+  // It spans the page, above the navigation as well as the document, which it
+  // cannot do from inside a column.
+  const markup = markupOf(composeWithHeader());
+
+  assert.ok(markup.indexOf('x-docs-header') < markup.indexOf('<!-- wp:columns'), 'it is still inside the columns');
+});
+
+test('the header matches the alignment of the documentation below it', () => {
+  // A constrained content wrapper holds its children to the measure, so
+  // without this the header would sit narrower than the tree beneath it.
+  assert.equal(DEFAULT_LAYOUT.align, 'full');
+  assert.ok(composeWithHeader().includes('class="alignfull x-docs-header"'), 'no alignment class');
+  assert.ok(composeWithHeader({ align: '' }).includes('class="x-docs-header"'), 'aligned when it should not be');
 });

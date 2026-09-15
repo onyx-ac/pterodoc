@@ -360,8 +360,9 @@ function renderHeader(input: ComposePageInput): string {
     ? `<a href="${escapeText(header.href)}">${escapeText(header.title)}</a>`
     : escapeText(header.title);
 
+  const align = input.layout.align ? `align${input.layout.align} ` : '';
   const markup =
-    `<div class="${theme.cls('docs-header')}">` +
+    `<div class="${align}${theme.cls('docs-header')}">` +
     `<span class="${theme.cls('docs-header-title')}">${title}</span>` +
     `<input type="checkbox" id="${id}" class="${theme.cls('docs-header-check')}">` +
     `<label class="${theme.cls('docs-header-label')}" for="${id}">` +
@@ -393,7 +394,6 @@ export function composePage(input: ComposePageInput): string {
 
   const main = joinBlocks([
     input.banner ?? '',
-    renderHeader(input),
     renderDocsBar(input),
     input.body,
     index,
@@ -401,7 +401,7 @@ export function composePage(input: ComposePageInput): string {
   ]);
 
   if (layout.kind === 'single' || layout.nav === 'none') {
-    return joinBlocks([renderStyles(theme, layout), main]);
+    return joinBlocks([renderStyles(theme, layout), renderHeader(input), main]);
   }
 
   const navClass = theme.cls('docs-nav');
@@ -428,7 +428,7 @@ export function composePage(input: ComposePageInput): string {
     `<div class="wp-block-columns${alignClass} ${columnsClass}">${navColumn}\n\n${mainColumn}</div>`,
   );
 
-  return joinBlocks([renderStyles(theme, layout), columns]);
+  return joinBlocks([renderStyles(theme, layout), renderHeader(input), columns]);
 }
 
 /**

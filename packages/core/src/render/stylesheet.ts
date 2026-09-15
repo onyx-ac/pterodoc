@@ -58,7 +58,7 @@ const TEMPLATE = `
 
 /* Navigation. The list markers and the cramped column are the two things that
    make an unstyled docs page unreadable. */
-:where(.{p}-docs-nav){min-width:0;position:sticky;top:2rem;z-index:999;max-height:calc(100vh - 4rem);max-height:calc(100dvh - 4rem);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+:where(.{p}-docs-nav){min-width:0;position:sticky;top:2rem;max-height:calc(100vh - 4rem);max-height:calc(100dvh - 4rem);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 :where(.{p}-docs-nav) ul{list-style:none;margin:0;padding-inline-start:0}
 :where(.{p}-docs-nav) li{margin:0}
 :where(.{p}-docs-nav) ul ul{margin-inline-start:.75em;padding-inline-start:.75em;border-inline-start:1px solid var(--{p}-rule)}
@@ -68,6 +68,12 @@ const TEMPLATE = `
 
 /* The site's own header, above the breadcrumb row. The control that opens it
    is off-screen rather than display:none, so a keyboard can still reach it. */
+/* Full width, then padded back in -- the same move the columns below make, and
+   for the same reason: it lines the header's contents up with the
+   documentation's. Padding rather than margin because full width is achieved
+   with a negative margin, so a margin here would be arguing with the theme
+   while padding simply sits inside it. */
+.alignfull.{p}-docs-header{padding-inline:var(--wp--style--root--padding-left,var(--{p}-gutter)) var(--wp--style--root--padding-right,var(--{p}-gutter))}
 :where(.{p}-docs-header){display:flex;align-items:center;gap:1rem;padding-block:.6rem;border-bottom:1px solid var(--{p}-rule)}
 :where(.{p}-docs-header-title){flex:0 0 auto;font-weight:700}
 :where(.{p}-docs-header-title) a{color:inherit;text-decoration:none}
@@ -147,14 +153,14 @@ const TEMPLATE = `
    navigation uses, with an id of its own because both can be open at once. */
 .{p}-docs-header-label{display:inline-flex;align-items:center;gap:.5rem;margin-inline-start:auto;flex:0 0 auto;padding:.4rem .7rem;border:1px solid var(--{p}-rule);border-radius:999px;font-size:.9375em;cursor:pointer;user-select:none}
 .{p}-docs-header-icon{position:relative;width:1rem;height:2px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}
-.{p}-docs-header-nav{position:fixed;inset-inline:0;top:auto;bottom:0;z-index:999;display:block;max-height:min(80vh,44rem);max-height:min(80dvh,44rem);overflow-y:auto;overscroll-behavior:contain;padding:1.25rem var(--{p}-gutter) calc(1.25rem + env(safe-area-inset-bottom));background:var(--{p}-surface-solid);border-top:1px solid var(--{p}-rule);border-radius:16px 16px 0 0;box-shadow:0 -8px 32px color-mix(in oklab,#000 22%,transparent);transform:translateY(101%);visibility:hidden;transition:transform .24s cubic-bezier(.2,0,0,1),visibility .24s}
+.{p}-docs-header-nav{position:fixed;inset-inline:0;top:auto;bottom:0;margin:0;z-index:999;display:block;max-height:min(65vh,38rem);max-height:min(65dvh,38rem);overflow-y:auto;overscroll-behavior:contain;padding:1.25rem var(--{p}-gutter) calc(1.25rem + env(safe-area-inset-bottom));background:var(--{p}-surface-solid);border-top:1px solid var(--{p}-rule);border-radius:16px 16px 0 0;box-shadow:0 -8px 32px color-mix(in oklab,#000 22%,transparent);transform:translateY(101%);visibility:hidden;transition:transform .24s cubic-bezier(.2,0,0,1),visibility .24s}
 .{p}-docs-header-start,.{p}-docs-header-end{display:block;margin:0}
 .{p}-docs-header-end{margin-inline-start:0}
 .{p}-docs-header-nav :is(a,span){padding:.5rem .25rem;font-size:1em}
 /* Nested entries are simply open: there is room, and a hover menu is no use here. */
 .{p}-docs-header-menu{display:block;position:static;min-width:0;margin-inline-start:.75rem;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
 .{p}-docs-header-check:checked~.{p}-docs-header-nav{transform:none;visibility:visible}
-.{p}-docs-header-check:checked~.{p}-docs-header-scrim{display:block;position:fixed;inset:0;z-index:998;background:color-mix(in oklab,#000 45%,transparent);cursor:pointer}
+.{p}-docs-header-check:checked~.{p}-docs-header-scrim{display:block;position:fixed;inset:0;margin:0;z-index:998;background:color-mix(in oklab,#000 45%,transparent);cursor:pointer}
 
 .{p}-docs:has(.{p}-docs-toggle) .{p}-docs-bar{position:sticky;top:0;z-index:30;margin-inline:calc(-1 * var(--{p}-gutter));display:flex;align-items:center;gap:.75rem;min-height:3.25rem;padding:.5rem clamp(.75rem,4vw,1.25rem);background:var(--{p}-surface-solid,Canvas);border-bottom:1px solid var(--{p}-rule)}
 .{p}-docs:has(.{p}-docs-toggle) .{p}-docs-bar .{p}-docs-breadcrumb{min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;white-space:nowrap}
@@ -179,7 +185,7 @@ const TEMPLATE = `
 .{p}-docs-toggle:checked+.{p}-docs-toggle-label{background:var(--{p}-surface)}
 
 /* The sheet. It covers rather than pushes, so the document keeps its place. */
-.{p}-docs:has(.{p}-docs-toggle) .{p}-docs-nav{position:fixed;inset-inline:0;top:auto;bottom:0;z-index:999;max-width:none;max-height:min(88vh,52rem);max-height:min(88dvh,52rem);margin:0;padding:1rem clamp(.75rem,4vw,1.25rem) calc(1rem + env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;background:var(--{p}-surface-solid,Canvas);border-top:1px solid var(--{p}-rule);border-radius:1rem 1rem 0 0;box-shadow:0 -8px 40px color-mix(in oklab,currentColor 22%,transparent);transform:translateY(101%);visibility:hidden;transition:transform .22s cubic-bezier(.2,0,0,1),visibility 0s linear .22s}
+.{p}-docs:has(.{p}-docs-toggle) .{p}-docs-nav{position:fixed;inset-inline:0;top:auto;bottom:0;margin:0;z-index:999;max-width:none;max-height:min(75vh,46rem);max-height:min(75dvh,46rem);padding:1rem clamp(.75rem,4vw,1.25rem) calc(1rem + env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;background:var(--{p}-surface-solid,Canvas);border-top:1px solid var(--{p}-rule);border-radius:1rem 1rem 0 0;box-shadow:0 -8px 40px color-mix(in oklab,currentColor 22%,transparent);transform:translateY(101%);visibility:hidden;transition:transform .22s cubic-bezier(.2,0,0,1),visibility 0s linear .22s}
 .{p}-docs:has(.{p}-docs-toggle:checked) .{p}-docs-nav{transform:none;visibility:visible;transition-delay:0s}
 
 /* A grab handle, so it reads as a sheet. */
@@ -188,7 +194,7 @@ const TEMPLATE = `
 /* Closing from outside: a second label over the page, for the same checkbox. */
 /* A dark veil rather than one mixed from the text colour, so the cross drawn on
    it is legible whichever way the theme runs. */
-.{p}-docs:has(.{p}-docs-toggle:checked) .{p}-docs-scrim{display:block;position:fixed;inset:0;z-index:998;background:color-mix(in oklab,#000 45%,transparent);cursor:pointer}
+.{p}-docs:has(.{p}-docs-toggle:checked) .{p}-docs-scrim{display:block;position:fixed;inset:0;margin:0;z-index:998;background:color-mix(in oklab,#000 45%,transparent);cursor:pointer}
 .{p}-docs-scrim::before,.{p}-docs-scrim::after{content:"";position:absolute;top:1.5rem;inset-inline-end:1.5rem;width:1.5rem;height:2px;border-radius:2px;background:#fff;opacity:.9}
 .{p}-docs-scrim::before{transform:rotate(45deg)}
 .{p}-docs-scrim::after{transform:rotate(-45deg)}
