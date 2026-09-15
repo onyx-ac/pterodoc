@@ -19,6 +19,7 @@ export interface FakePage {
   menu_order: number;
   template: string;
   meta: Record<string, unknown>;
+  date_gmt: string;
 }
 
 /** A media item as the fake holds it. */
@@ -71,6 +72,7 @@ export function makePage(page: Partial<FakePage> & { id: number; slug: string })
     menu_order: 0,
     template: '',
     meta: {},
+    date_gmt: '2020-01-01T00:00:00',
     ...page,
     title:
       page.title ??
@@ -107,6 +109,22 @@ export function createFakeWp(
       status: 200,
       headers: { 'content-type': 'application/json', ...headers },
     });
+
+  /**
+   * WordPress keeps whole seconds and drops the zone marker.
+   *
+   * `date_gmt` is UTC by definition, so an unmarked value is read as UTC and
+   * not as whatever the machine running this happens to be.
+   */
+  const storedDate = (value: unknown): string => {
+    const text = String(value).trim();
+    const utc = /(?:Z|[+-]\d{2}:?\d{2})$/.test(text) ? text : `${text}Z`;
+    return new Date(utc).toISOString().slice(0, 19);
+  };
+
+  /** A post dated ahead of now is scheduled, however it was asked for. */
+  const statusFor = (asked: string, date: string): string =>
+    asked === 'publish' && Date.parse(`${date}Z`) > Date.now() ? 'future' : asked;
 
   const notFound = (): Response =>
     new Response('{"code":"rest_post_invalid_id"}', {
@@ -161,11 +179,13 @@ export function createFakeWp(
       const requested = String(body['slug'] ?? '');
       // WordPress appends a suffix when the slug is already taken.
       const taken = pages.some((p) => p.parent === Number(body['parent'] ?? 0) && p.slug === requested);
+      const date = body['date_gmt'] !== undefined ? storedDate(body['date_gmt']) : '2020-01-01T00:00:00';
       const created = makePage({
         id: (nextId += 1),
         parent: Number(body['parent'] ?? 0),
         slug: taken ? `${requested}-2` : requested,
-        status: String(body['status'] ?? 'publish'),
+        date_gmt: date,
+        status: statusFor(String(body['status'] ?? 'publish'), date),
         title: { raw: String(body['title'] ?? ''), rendered: String(body['title'] ?? '') },
         content: { raw: String(body['content'] ?? '') },
         excerpt: { raw: String(body['excerpt'] ?? '') },
@@ -188,9 +208,11 @@ export function createFakeWp(
       if (body['excerpt'] !== undefined) page.excerpt = { raw: String(body['excerpt']) };
       if (body['parent'] !== undefined) page.parent = Number(body['parent']);
       if (body['slug'] !== undefined) page.slug = String(body['slug']);
-      if (body['status'] !== undefined) page.status = String(body['status']);
       if (body['menu_order'] !== undefined) page.menu_order = Number(body['menu_order']);
       if (body['template'] !== undefined) page.template = String(body['template']);
+      if (body['date_gmt'] !== undefined) page.date_gmt = storedDate(body['date_gmt']);
+      // After the date, which is what decides whether it can be published.
+      if (body['status'] !== undefined) page.status = statusFor(String(body['status']), page.date_gmt);
       if (body['meta'] !== undefined) {
         page.meta = { ...page.meta, ...(body['meta'] as Record<string, unknown>) };
       }

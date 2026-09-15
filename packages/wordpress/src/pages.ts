@@ -27,6 +27,34 @@ interface WpPage {
   menu_order: number;
   template: string;
   meta?: Record<string, unknown>;
+  date_gmt?: string | null;
+}
+
+/**
+ * Read a WordPress date as an instant.
+ *
+ * WordPress returns `date_gmt` with no zone marker -- it is UTC by definition,
+ * and `Date.parse` would otherwise read it as local time. It also stores whole
+ * seconds, so anything finer is dropped before comparing: keeping it would
+ * make a post with milliseconds in its front matter differ on every run.
+ */
+export function toInstant(value: unknown): number | undefined {
+  const text = String(value ?? '').trim();
+  if (!text) return undefined;
+  const utc = /(?:Z|[+-]\d{2}:?\d{2})$/.test(text) ? text : `${text}Z`;
+  const ms = Date.parse(utc);
+  return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000) * 1000;
+}
+
+/**
+ * Write a date the way WordPress stores it.
+ *
+ * Whole seconds and no zone suffix, which is what comes back -- so the value
+ * sent and the value read compare equal without either end normalising.
+ */
+export function toWpDate(iso: string): string | undefined {
+  const ms = toInstant(iso);
+  return ms === undefined ? undefined : new Date(ms).toISOString().slice(0, 19);
 }
 
 /** Convert a WordPress post into the shape the reconciler compares. */
@@ -43,6 +71,7 @@ export function toRemotePage(page: WpPage): RemotePage {
     menuOrder: page.menu_order,
     template: page.template,
     meta: page.meta,
+    ...(page.date_gmt ? { date: page.date_gmt } : {}),
   };
 }
 
@@ -57,6 +86,8 @@ export interface PageInput {
   menu_order?: number;
   template?: string;
   meta?: Record<string, unknown>;
+  /** Publication instant in UTC. Never `date`, which is the site's timezone. */
+  date_gmt?: string;
 }
 
 /** The six things a sync does to a post type, bound to one REST base. */
@@ -171,13 +202,35 @@ const normalise = (value: unknown): string =>
 export function diffPage(
   remote: RemotePage,
   rendered: RenderedPage,
-  context: { parentId: number; status: string; template: string; isRoot: boolean; slug: string },
+  context: {
+    parentId: number;
+    status: string;
+    template: string;
+    isRoot: boolean;
+    slug: string;
+    /** Now, so a scheduled post can be recognised. Defaults to the clock. */
+    now?: number;
+  },
 ): string[] {
   const changed: string[] = [];
   if (normalise(remote.title) !== normalise(rendered.title)) changed.push('title');
   if (normalise(remote.content) !== normalise(rendered.content)) changed.push('content');
   if (normalise(remote.excerpt) !== normalise(rendered.excerpt)) changed.push('excerpt');
-  if (remote.status !== context.status) changed.push('status');
+
+  // Only where the rendered page has one: documentation never does, and a
+  // remote date would otherwise make every page differ forever.
+  const wanted = rendered.date ? toInstant(rendered.date) : undefined;
+  if (wanted !== undefined && wanted !== toInstant(remote.date)) changed.push('date');
+
+  // A post dated ahead of now cannot be published, whatever was asked for:
+  // WordPress holds it as `future` until the date arrives. Reading that back
+  // as a difference would rewrite the post on every run until then.
+  const scheduled =
+    remote.status === 'future' &&
+    context.status === 'publish' &&
+    wanted !== undefined &&
+    wanted > (context.now ?? Date.now());
+  if (!scheduled && remote.status !== context.status) changed.push('status');
   if (!context.isRoot && remote.menuOrder !== rendered.menuOrder) changed.push('menu_order');
   if ((remote.template ?? '') !== context.template) changed.push('template');
   if (remote.parent !== context.parentId) changed.push('parent');

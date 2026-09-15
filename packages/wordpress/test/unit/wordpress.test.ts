@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TargetError } from '@pterodocs/core/util';
 import { WpClient } from '../../src/client';
-import { computePrune, createPostsApi, diffPage } from '../../src/pages';
+import { computePrune, createPostsApi, diffPage, toInstant, toWpDate } from '../../src/pages';
 import { hrefFor, prefixSegments, splitOwnership } from '../../src/url';
 import { hashFromSlug, mediaSlug } from '../../src/media';
 import { createFakeWp, type FakeWp } from '../fixtures/fake-wp';
@@ -267,4 +267,88 @@ test('a media slug carries the content hash both ways', () => {
   assert.equal(hashFromSlug('pterodocs', 'pterodocs-0123456789abcdef'), '0123456789abcdef');
   assert.equal(hashFromSlug('pterodocs', 'something-else'), undefined);
   assert.equal(hashFromSlug('pterodocs', 'pterodocs-short'), undefined);
+});
+
+/** The smallest rendered page that will satisfy `diffPage`. */
+function renderedWith(over: Partial<RenderedPage> = {}): RenderedPage {
+  return {
+    path: 'v2',
+    slug: 'v2',
+    title: 'v2',
+    content: 'body',
+    excerpt: '',
+    menuOrder: 0,
+    meta: {},
+    ...over,
+  };
+}
+
+/** The remote it is compared against, agreeing on everything but the date. */
+function remoteWith(over: Partial<RemotePage> = {}): RemotePage {
+  return {
+    id: 1,
+    parent: 0,
+    slug: 'v2',
+    status: 'publish',
+    link: 'https://example.test/v2/',
+    title: 'v2',
+    content: 'body',
+    excerpt: '',
+    menuOrder: 0,
+    template: '',
+    meta: {},
+    ...over,
+  };
+}
+
+const AT = { parentId: 0, status: 'publish', template: '', isRoot: false, slug: 'v2' };
+
+test('a page with no date of its own never differs on one', () => {
+  // Documentation has no date. If the comparison were unguarded, every page
+  // would differ from whatever WordPress happened to stamp it with.
+  const changed = diffPage(remoteWith({ date: '2020-06-01T12:00:00' }), renderedWith(), AT);
+  assert.deepEqual(changed, []);
+});
+
+test('a date WordPress returns without a zone is the same instant it was sent', () => {
+  // `date_gmt` comes back as `2026-01-01T09:30:00` -- UTC, but unmarked, so a
+  // string compare differs forever and `Date.parse` would read it as local.
+  const changed = diffPage(
+    remoteWith({ date: '2026-01-01T09:30:00' }),
+    renderedWith({ date: '2026-01-01T09:30:00.000Z' }),
+    AT,
+  );
+  assert.deepEqual(changed, []);
+  assert.equal(toInstant('2026-01-01T09:30:00'), Date.parse('2026-01-01T09:30:00Z'));
+  assert.equal(toWpDate('2026-01-01T09:30:00.482Z'), '2026-01-01T09:30:00');
+});
+
+test('a date that really moved is reported', () => {
+  const changed = diffPage(
+    remoteWith({ date: '2026-01-01T09:30:00' }),
+    renderedWith({ date: '2026-02-01T09:30:00Z' }),
+    AT,
+  );
+  assert.deepEqual(changed, ['date']);
+});
+
+test('a post held back for its own date is not a difference', () => {
+  // WordPress will not publish something dated ahead of now; it stores it as
+  // `future`. Reading that as a status difference rewrites the post on every
+  // run until the date arrives.
+  const changed = diffPage(
+    remoteWith({ status: 'future', date: '2030-01-01T00:00:00' }),
+    renderedWith({ date: '2030-01-01T00:00:00Z' }),
+    { ...AT, now: Date.parse('2026-01-01T00:00:00Z') },
+  );
+  assert.deepEqual(changed, []);
+});
+
+test('a post left as future once its date has passed is still put right', () => {
+  const changed = diffPage(
+    remoteWith({ status: 'future', date: '2026-01-01T00:00:00' }),
+    renderedWith({ date: '2026-01-01T00:00:00Z' }),
+    { ...AT, now: Date.parse('2026-06-01T00:00:00Z') },
+  );
+  assert.deepEqual(changed, ['status']);
 });

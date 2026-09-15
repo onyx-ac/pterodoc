@@ -12,7 +12,7 @@ import { DEFAULT_LAYOUT, resolveConfig, type ResolvedConfig } from '@pterodocs/c
 import { createWordpressTarget } from '@pterodocs/wordpress';
 import { runSync } from '@pterodocs/core';
 import type { SiteModel } from '@pterodocs/core/model';
-import { createFakeWp, type FakeWp } from '../../../wordpress/test/fixtures/fake-wp';
+import { createFakeWp, makePage, type FakeWp } from '../../../wordpress/test/fixtures/fake-wp';
 
 // Captured models are a core artefact and live with core's fixtures.
 const fixtures = path.dirname(
@@ -198,19 +198,15 @@ test('pages along the root path are created once and never edited again', async 
 /** Add a page under the documentation root that no document accounts for. */
 function orphan(t: Awaited<ReturnType<typeof setup>>, id: number, content: string): void {
   const docs = t.fake.pages.find((page) => page.slug === 'docs')!;
-  t.fake.pages.push({
-    id,
-    parent: docs.id,
-    slug: `orphan-${id}`,
-    status: 'publish',
-    link: `https://example.test/orphan-${id}/`,
-    title: { raw: 'Orphan', rendered: 'Orphan' },
-    content: { raw: content },
-    excerpt: { raw: '' },
-    menu_order: 0,
-    template: '',
-    meta: {},
-  });
+  t.fake.pages.push(
+    makePage({
+      id,
+      parent: docs.id,
+      slug: `orphan-${id}`,
+      title: { raw: 'Orphan', rendered: 'Orphan' },
+      content: { raw: content },
+    }),
+  );
 }
 
 test('a page with no source document is reported, and only trashed when asked', async () => {
@@ -627,19 +623,9 @@ test('a post nothing accounts for is pruned without a root to anchor on', async 
   const t = await namespaced({ prune: true });
   await t.run();
 
-  t.fake.pages.push({
-    id: 5000,
-    parent: 0,
-    slug: 'withdrawn',
-    status: 'publish',
-    link: 'https://example.test/products/docstack/releases/withdrawn/',
-    title: { raw: 'Withdrawn', rendered: 'Withdrawn' },
-    content: { raw: '<div class="x-docs"></div>' },
-    excerpt: { raw: '' },
-    menu_order: 0,
-    template: '',
-    meta: {},
-  });
+  t.fake.pages.push(
+    makePage({ id: 5000, parent: 0, slug: 'withdrawn', content: { raw: '<div class="x-docs"></div>' } }),
+  );
 
   const { plan } = await t.run();
   assert.equal(plan.summary['prune'], 1);
@@ -695,6 +681,7 @@ async function withBlog(overrides: Partial<ResolvedConfig> = {}, fake = createFa
               unlisted: false,
               frontMatter: {},
               sidebarName: 'blog',
+              date: '2026-01-01T09:30:00.482Z',
               tags: [],
               format: 'md',
             },
@@ -728,5 +715,40 @@ test('a blog run publishes the blog and nothing else', async () => {
   for (const slug of ['alpha', 'first', 'beta', 'child']) {
     assert.equal(published.includes(slug), false, `${slug} came along`);
   }
+  await t.cleanup();
+});
+
+test('a dated post is sent as an instant, and stays put on a second run', async () => {
+  // The two ways this churns forever: `date` is the site's timezone, so two
+  // sites disagree about the same moment; and WordPress returns `date_gmt`
+  // with no zone marker and whole seconds, so a string compare always differs.
+  const t = await withBlog({ publish: 'blog', sidebars: ['blog'] });
+  await t.run();
+
+  const sent = t.fake.calls.filter((call) => call.body['date_gmt'] !== undefined);
+  assert.equal(sent.length, 1, 'the date was never sent');
+  assert.equal(sent[0]!.body['date_gmt'], '2026-01-01T09:30:00', 'not the stored shape');
+  assert.equal(sent[0]!.body['date'], undefined, 'the site-timezone field was sent');
+  assert.equal(t.fake.pages.find((page) => page.slug === 'v2')!.date_gmt, '2026-01-01T09:30:00');
+
+  const { plan } = await t.run();
+  assert.equal(plan.summary['update'], undefined, JSON.stringify(plan.summary));
+  await t.cleanup();
+});
+
+test('a post dated ahead of now is scheduled, said so, and not fought over', async () => {
+  const t = await withBlog({ publish: 'blog', sidebars: ['blog'] });
+  t.model.instances.at(-1)!.versions[0]!.docs[0]!.date = '2099-01-01T00:00:00.000Z';
+
+  const first = await t.run();
+  assert.equal(t.fake.pages.find((page) => page.slug === 'v2')!.status, 'future');
+  assert.ok(
+    first.plan.issues.some((issue) => /in the future/.test(issue.message)),
+    'the reader was not told it would be held back',
+  );
+
+  // And the held-back status is not a difference to be corrected every run.
+  const { plan } = await t.run();
+  assert.equal(plan.summary['update'], undefined, JSON.stringify(plan.summary));
   await t.cleanup();
 });

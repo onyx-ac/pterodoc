@@ -48,6 +48,8 @@ export interface RemotePage {
   menuOrder: number;
   template: string;
   meta?: Record<string, unknown> | undefined;
+  /** When the target believes it was published, as an ISO instant in UTC. */
+  date?: string | undefined;
 }
 
 /** A page as pterodocs would publish it. */
@@ -66,6 +68,13 @@ export interface RenderedPage {
   menuOrder: number;
   /** Metadata to write, when the target supports it. */
   meta: Record<string, string>;
+  /**
+   * When this document was published, ISO 8601.
+   *
+   * A blog post has one and documentation does not, which is why everything
+   * that reads it is guarded: a page with no date must never diff on one.
+   */
+  date?: string | undefined;
   /** Source file, for messages. */
   file?: string | undefined;
   /** Version this page belongs to. */

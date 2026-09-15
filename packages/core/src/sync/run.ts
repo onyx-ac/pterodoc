@@ -718,6 +718,7 @@ function renderPageFor(input: {
       excerpt,
       menuOrder: node.menuOrder,
       meta,
+      ...(doc?.date ? { date: doc.date } : {}),
       file: doc?.sourceRelativePath,
       versionName: node.versionName,
     },

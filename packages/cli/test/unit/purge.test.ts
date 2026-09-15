@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { purgeTree, findByPath } from '@pterodocs/core';
 import { createWordpressTarget } from '@pterodocs/wordpress';
-import { createFakeWp, type FakeWp } from '../../../wordpress/test/fixtures/fake-wp';
+import { createFakeWp, makePage, type FakeWp } from '../../../wordpress/test/fixtures/fake-wp';
 
 const PREFIX = 'docstack';
 
@@ -25,19 +25,7 @@ function siteWithDocs(): FakeWp {
 
   const add = (parent: number, slug: string, content: string): number => {
     const id = (next += 1);
-    fake.pages.push({
-      id,
-      parent,
-      slug,
-      status: 'publish',
-      link: `https://example.test/${slug}/`,
-      title: { raw: slug, rendered: slug },
-      content: { raw: content },
-      excerpt: { raw: '' },
-      menu_order: 0,
-      template: '',
-      meta: {},
-    });
+    fake.pages.push(makePage({ id, parent, slug, content: { raw: content } }));
     return id;
   };
 
@@ -143,19 +131,15 @@ test('nothing above the documentation root is touched', async () => {
 test('a page pterodocs did not write is left standing inside the tree', async () => {
   const fake = siteWithDocs();
   const docs = fake.pages.find((page) => page.slug === 'docs')!;
-  fake.pages.push({
-    id: 900,
-    parent: docs.id,
-    slug: 'hand-written',
-    status: 'publish',
-    link: 'https://example.test/hand-written/',
-    title: { raw: 'Hand written', rendered: 'Hand written' },
-    content: { raw: '<!-- wp:paragraph --><p>Mine.</p><!-- /wp:paragraph -->' },
-    excerpt: { raw: '' },
-    menu_order: 0,
-    template: '',
-    meta: {},
-  });
+  fake.pages.push(
+    makePage({
+      id: 900,
+      parent: docs.id,
+      slug: 'hand-written',
+      title: { raw: 'Hand written', rendered: 'Hand written' },
+      content: { raw: '<!-- wp:paragraph --><p>Mine.</p><!-- /wp:paragraph -->' },
+    }),
+  );
 
   const session = await open(fake);
   const report = await purgeTree(session, {
@@ -208,19 +192,7 @@ function releaseCollection(): FakeWp {
 
   const add = (parent: number, slug: string, content: string): number => {
     const id = (next += 1);
-    fake.pages.push({
-      id,
-      parent,
-      slug,
-      status: 'publish',
-      link: `https://example.test/product/docstack/releases/${slug}/`,
-      title: { raw: slug, rendered: slug },
-      content: { raw: content },
-      excerpt: { raw: '' },
-      menu_order: 0,
-      template: '',
-      meta: {},
-    });
+    fake.pages.push(makePage({ id, parent, slug, content: { raw: content } }));
     return id;
   };
 

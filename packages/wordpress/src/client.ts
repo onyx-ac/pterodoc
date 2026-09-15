@@ -7,8 +7,13 @@
 
 import { TargetError, USER_AGENT } from '@pterodocs/core/util';
 
-/** Fields needed to compare a remote page with a rendered one. */
-export const PAGE_FIELDS = 'id,parent,slug,status,link,title,menu_order,template';
+/**
+ * Fields needed to compare a remote page with a rendered one.
+ *
+ * `date_gmt` and not `date`: the second is in the site's timezone, so two
+ * sites in different places would disagree about the same instant.
+ */
+export const PAGE_FIELDS = 'id,parent,slug,status,link,title,menu_order,template,date_gmt';
 
 /** Those, plus the content only fetched when a page is about to be compared. */
 export const FULL_PAGE_FIELDS = `${PAGE_FIELDS},content,excerpt,meta`;

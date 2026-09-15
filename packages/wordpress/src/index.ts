@@ -19,6 +19,8 @@ import {
   computePrune,
   createPostsApi,
   diffPage,
+  toInstant,
+  toWpDate,
   type PageInput,
 } from './pages';
 import { hrefFor, splitOwnership, type WordpressUrlPolicy } from './url';
@@ -251,6 +253,22 @@ export function createWordpressTarget(
             template: options.template,
           };
           if (Object.keys(page.meta).length > 0) body.meta = page.meta;
+
+          if (page.date) {
+            const when = toWpDate(page.date);
+            if (when) body.date_gmt = when;
+
+            // WordPress will not publish something dated ahead of now; it
+            // holds it as `future` and publishes it when the date arrives.
+            // That is the right behaviour and not an error, but it is not what
+            // "published" usually means, so it is said out loud once.
+            const instant = toInstant(page.date);
+            if (options.status === 'publish' && instant !== undefined && instant > Date.now()) {
+              warnings.push(
+                `${page.path || '(root)'} is dated ${page.date}, which is in the future, so WordPress will hold it until then rather than publishing it now.`,
+              );
+            }
+          }
 
           try {
             await posts.update(id, body);
