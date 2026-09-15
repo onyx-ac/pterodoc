@@ -161,6 +161,17 @@ export interface TargetSession {
   /** Every page under the target's namespace, fetched once. */
   loadIndex(): Promise<RemotePage[]>;
   /**
+   * Where a reader finds what this run published, when the path cannot say.
+   *
+   * A documentation tree is at its own path and needs no help. Posts are not:
+   * each sits where the site's permalink settings put it, so the only address
+   * that means "these posts" is the archive the target lists them on -- which
+   * only the target knows, and only once the session has resolved it.
+   *
+   * Absolute, or undefined when `rootPath` already answers.
+   */
+  publishedIndex?(): string | undefined;
+  /**
    * Make sure everything above the documentation root exists.
    *
    * The target owns this because only it knows what a path is made of. Pages

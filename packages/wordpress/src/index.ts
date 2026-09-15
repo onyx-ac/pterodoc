@@ -168,6 +168,7 @@ export function createWordpressTarget(
       let index: RemotePage[] | undefined;
       let terms: TermIndex | undefined;
       let categoryId: number | undefined;
+      let categoryLink: string | undefined;
       const categoryWarnings: string[] = [];
       let markerChecked = false;
 
@@ -185,11 +186,18 @@ export function createWordpressTarget(
           // and walking the path is a request per level.
           if (options.categoryPath.length > 0 && categoryId === undefined) {
             const categories = await loadTermIndex(client, 'categories', dryRun);
-            const { id, warnings } = await categories.ensurePath(options.categoryPath);
+            const { id, link, warnings } = await categories.ensurePath(options.categoryPath);
             categoryId = id ?? 0;
+            categoryLink = link;
             categoryWarnings.push(...warnings);
           }
           return index;
+        },
+
+        publishedIndex(): string | undefined {
+          // Only for a flat tree. A documentation tree is at its own path,
+          // which says where it is perfectly well.
+          return flat ? categoryLink : undefined;
         },
 
         async ensureRootParent(): Promise<{

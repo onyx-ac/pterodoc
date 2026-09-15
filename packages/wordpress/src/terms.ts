@@ -23,6 +23,8 @@ interface WpTerm {
   slug: string;
   /** 0 for a flat taxonomy, or one that has no parent. */
   parent?: number;
+  /** The archive WordPress lists this term's posts on. */
+  link?: string;
 }
 
 /** The terms of one taxonomy, and the ability to add to them. */
@@ -44,7 +46,9 @@ export interface TermIndex {
    *
    * @returns The leaf's id, or undefined when it could not be created.
    */
-  ensurePath(names: readonly string[]): Promise<{ id: number | undefined; warnings: string[] }>;
+  ensurePath(
+    names: readonly string[],
+  ): Promise<{ id: number | undefined; link: string | undefined; warnings: string[] }>;
 }
 
 /** How a label is matched against an existing term, in either direction. */
@@ -70,7 +74,10 @@ export async function loadTermIndex(
 
   let terms: WpTerm[] = [];
   try {
-    terms = await client.listAll<WpTerm>(route, { context: 'edit', _fields: 'id,name,slug,parent' });
+    terms = await client.listAll<WpTerm>(route, {
+      context: 'edit',
+      _fields: 'id,name,slug,parent,link',
+    });
   } catch (error) {
     // A taxonomy that is not registered answers 404. Publishing without tags
     // is better than not publishing, and `doctor` is where a missing taxonomy
@@ -139,26 +146,29 @@ export async function loadTermIndex(
     async ensurePath(names) {
       const warnings: string[] = [];
       let parent = 0;
+      let leaf: WpTerm | undefined;
 
       for (const name of names) {
         const existing = byParent.get(`${parent}/${key(name)}`);
         if (existing) {
+          leaf = existing;
           parent = existing.id;
           continue;
         }
-        if (dryRun) return { id: undefined, warnings };
+        if (dryRun) return { id: undefined, link: undefined, warnings };
 
         const { term, warning } = await create(name, parent);
         if (!term) {
           // A path is all or nothing: filing under a half-made one would put
           // the posts somewhere nobody asked for and nothing would say so.
           warnings.push(`${warning} The posts were published without a category.`);
-          return { id: undefined, warnings };
+          return { id: undefined, link: undefined, warnings };
         }
+        leaf = term;
         parent = term.id;
       }
 
-      return { id: parent || undefined, warnings };
+      return { id: parent || undefined, link: leaf?.link, warnings };
     },
   };
 }

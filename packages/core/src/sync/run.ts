@@ -88,6 +88,7 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
   let docusaurusVersion: string | null = null;
   let siteTitle = '';
   let llms: Artifacts['llms'] = null;
+  let published: string | undefined;
 
   const locales = await selectLocales(config, deps.reader);
 
@@ -136,6 +137,10 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
       }
     }
 
+    // After the instances, not before: the target only knows where it listed
+    // them once the session has resolved it, which happens on the first write.
+    published ??= session?.publishedIndex?.();
+
     // A post's byline is the target's to render, from the account that wrote
     // it -- so saying who a document names would either duplicate what the
     // site already shows or contradict it. Mapping the name to a user is the
@@ -167,7 +172,8 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
     if (session) requests += session.requestCount();
   }
 
-  const rootPath = deps.target?.rootPath ?? '/';
+  // What the target says, where it knows better than the path does.
+  const rootPath = published ?? deps.target?.rootPath ?? '/';
   const plan: Plan = {
     generatedAt: new Date().toISOString(),
     versions: { pterodocs: VERSION, docusaurus: docusaurusVersion, node: process.version },

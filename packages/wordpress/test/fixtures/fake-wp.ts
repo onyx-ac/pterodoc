@@ -31,6 +31,8 @@ export interface FakeTerm {
   slug: string;
   /** 0 for a term with no parent; only categories nest. */
   parent?: number;
+  /** The archive WordPress lists this term's posts on. */
+  link?: string;
   /** Which taxonomy it belongs to. Defaults to whichever one was configured. */
   taxonomy?: string;
 }
@@ -120,6 +122,7 @@ export function createFakeWp(
   const terms: FakeTerm[] = (options.terms ?? []).map((term) => ({
     parent: 0,
     taxonomy: taxonomy || 'categories',
+    link: `https://example.test/topics/${term.slug}/`,
     ...term,
   }));
   const collection = `/${restBase}`;
@@ -193,12 +196,23 @@ export function createFakeWp(
       }
       if (routedAs === 'POST') {
         const name = String(body['name'] ?? '');
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const parent = Number(body['parent'] ?? 0);
+        // WordPress builds a nested category's archive from the whole path.
+        const trail: string[] = [slug];
+        for (let at = parent; at; ) {
+          const up = terms.find((term) => term.id === at);
+          if (!up) break;
+          trail.unshift(up.slug);
+          at = up.parent ?? 0;
+        }
         const created: FakeTerm = {
           id: (nextId += 1),
           name,
-          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-          parent: Number(body['parent'] ?? 0),
+          slug,
+          parent,
           taxonomy: termRoute,
+          link: `https://example.test/topics/${trail.join('/')}/`,
         };
         terms.push(created);
         return json(created);

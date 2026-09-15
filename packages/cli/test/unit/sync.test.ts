@@ -945,3 +945,24 @@ test('a site that stored no ownership marker is told what that costs', async () 
   );
   await t.cleanup();
 });
+
+test('the run reports the archive its posts are listed on', async () => {
+  // A post sits wherever the permalink settings put it, so no single path
+  // means "the release notes". The category archive is the only address that
+  // does, and the reader needs it to link to them at all.
+  const t = await blogRun();
+  const { plan } = await t.run();
+
+  const leaf = t.fake.terms.find((term) => term.name === 'Release notes')!;
+  assert.equal(plan.rootPath, leaf.link, plan.rootPath);
+  assert.match(plan.rootPath, /^https?:\/\//);
+  await t.cleanup();
+});
+
+test('a docs run still reports its own path, not an archive', async () => {
+  const t = await setup();
+  const { plan } = await t.run();
+
+  assert.equal(plan.rootPath, '/products/docstack/docs/');
+  await t.cleanup();
+});

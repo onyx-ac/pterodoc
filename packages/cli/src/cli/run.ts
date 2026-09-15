@@ -120,6 +120,16 @@ async function commandSync(
     log: (message) => reporter.detail(message),
   });
 
+  // A post sits wherever the site's permalink settings put it, so there is no
+  // one path that means "the release notes". The category archive is the only
+  // address that does, and the run has just resolved it -- which saves the
+  // reader going to look for it before they can link to it.
+  if (config.publish === 'blog' && /^https?:\/\//.test(plan.rootPath)) {
+    reporter.info('');
+    reporter.info(`The posts are listed at ${plan.rootPath}`);
+    reporter.info('Point your Docusaurus navbar entry there to send readers to these rather than to the Docusaurus blog.');
+  }
+
   if (parsed.capture) {
     await writeCapture(parsed.capture, await reader.read());
     reporter.info(`Model written to ${parsed.capture}`);

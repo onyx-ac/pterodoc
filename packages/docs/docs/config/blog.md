@@ -83,6 +83,40 @@ blog: { categoryPath: ['Products', 'DocStack', 'Release notes'] },
 
 Given `categoryPath`, `category` is ignored and `target.root` is not consulted.
 
+## Linking readers to them
+
+Because a post's URL belongs to the site, there is no single path that means "the release
+notes" — one post's address tells you nothing about where the next one is. The **category
+archive** is the only address that does, and the run prints it when it finishes:
+
+```
+The posts are listed at https://example.com/topics/products/docstack/release-notes/
+Point your Docusaurus navbar entry there to send readers to these rather than to the
+Docusaurus blog.
+```
+
+`topics` there is the site's own category base, from **Settings → Permalinks**; yours may be
+`category` or something else. WordPress includes child categories in an archive, so a parent
+lists everything below it too — `/topics/products/docstack/` shows the release notes as well.
+
+That link is the one manual step. Your Docusaurus navbar almost certainly points at your own
+blog:
+
+```ts
+{ to: '/blog', label: 'Releases', position: 'left' },
+```
+
+pterodocs reads `docusaurus.config.ts` and never writes to it, so it cannot repoint that entry
+for you — and it should not guess, because the entry is right for the Docusaurus site and only
+wrong for the published one. Change it yourself when you want readers sent to WordPress:
+
+```ts
+{ href: 'https://example.com/topics/products/docstack/release-notes/', label: 'Releases', position: 'left' },
+```
+
+An entry that already names a host is published exactly as written, so this survives every
+subsequent sync.
+
 ## Tags
 
 A post's front-matter tags become real WordPress tags:
