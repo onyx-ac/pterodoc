@@ -35,6 +35,7 @@ export const WORDPRESS_CAPABILITIES: TargetCapabilities = {
   supportsMeta: true,
   supportsTemplates: true,
   supportsDrafts: true,
+  publishesTreeRoot: true,
 };
 
 /** Content a page holds between being created and being rendered. */
@@ -65,6 +66,20 @@ export interface WordpressTargetOptions {
    * in which case it is that type's own `rest_base`.
    */
   restBase: string;
+  /**
+   * What the tree owns at its path.
+   *
+   * `tree` is the documentation case: the last segment of the path is a page
+   * pterodocs writes, anything above it is created once as a stub, and the
+   * whole site shares the `pages` collection -- so ownership has to be read
+   * off each page.
+   *
+   * `namespace` is the post type case: the collection holds nothing but this
+   * tree, its archive is the index, and there is no page at the root because
+   * WordPress generates it. Nothing above the path is created either -- the
+   * rewrite base is the post type's, not a page's.
+   */
+  ownership: 'tree' | 'namespace';
   /** Send DELETE as POST with an override header. */
   methodOverride: boolean;
   /** Retry policy. */
@@ -84,13 +99,19 @@ export function createWordpressTarget(
   deps: WordpressTargetDeps = {},
 ): Target {
   const log = deps.log ?? ((): void => {});
-  const { stubSegments, rootSlug } = splitOwnership(options.policy);
+  const namespaced = options.ownership === 'namespace';
+
+  // A namespaced tree owns its whole path through the post type's rewrite
+  // base, so there is no page to own and nothing above it to create.
+  const { stubSegments, rootSlug } = namespaced
+    ? { stubSegments: [] as string[], rootSlug: '' }
+    : splitOwnership(options.policy);
 
   // The documentation root has no path of its own in the tree, so its slug is
   // the last segment of the configured path rather than anything the model
   // supplied.
   const slugFor = (page: { path: string; slug: string }): string =>
-    page.path === '' ? rootSlug : page.slug;
+    !namespaced && page.path === '' ? rootSlug : page.slug;
 
   const makeClient = (locale: string): WpClient =>
     new WpClient({
@@ -108,7 +129,7 @@ export function createWordpressTarget(
 
   return {
     name: 'wordpress',
-    capabilities: WORDPRESS_CAPABILITIES,
+    capabilities: { ...WORDPRESS_CAPABILITIES, publishesTreeRoot: !namespaced },
     rootPath: hrefFor(options.policy, '', { versionName: '', locale: options.policy.primaryLocale ?? '' }),
 
     hrefFor(treePath, context) {
@@ -133,6 +154,10 @@ export function createWordpressTarget(
         }> {
           const created: { path: string; id: number | null }[] = [];
           let parentId: number | null = 0;
+
+          // Nothing to walk: the post type's own rewrite base puts the tree
+          // where it belongs, and its posts hang from the collection root.
+          if (namespaced) return { id: 0, created };
 
           for (const slug of stubSegments) {
             if (parentId === null) {

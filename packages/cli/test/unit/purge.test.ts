@@ -63,6 +63,7 @@ async function open(fake: FakeWp) {
       appPassword: 'pw',
       policy: { rootSegments: ['product', 'docstack'], baseSegments: ['docs'] },
       restBase: 'pages',
+      ownership: 'tree',
       status: 'publish',
       template: '',
       lang: '',
@@ -198,4 +199,83 @@ test('purging a path with nothing published there does nothing at all', async ()
   assert.equal(report.root, undefined);
   assert.equal(report.removed.length, 0);
   assert.equal(statusOf(fake, 'docs'), 'publish');
+});
+
+/** A collection of its own, holding release notes and nothing else. */
+function releaseCollection(): FakeWp {
+  const fake = createFakeWp({ restBase: 'pterodocs_release' });
+  let next = 200;
+
+  const add = (parent: number, slug: string, content: string): number => {
+    const id = (next += 1);
+    fake.pages.push({
+      id,
+      parent,
+      slug,
+      status: 'publish',
+      link: `https://example.test/product/docstack/releases/${slug}/`,
+      title: { raw: slug, rendered: slug },
+      content: { raw: content },
+      excerpt: { raw: '' },
+      menu_order: 0,
+      template: '',
+      meta: {},
+    });
+    return id;
+  };
+
+  const v2 = add(0, 'v2', generated());
+  add(v2, 'v2-1', generated());
+  add(0, 'v1', generated());
+  // Somebody's own post, filed under the same type.
+  add(0, 'hand-written', '<!-- wp:paragraph --><p>Mine.</p><!-- /wp:paragraph -->');
+
+  return fake;
+}
+
+/** Open a session on a collection that has no root page. */
+async function openNamespaced(fake: FakeWp) {
+  const target = createWordpressTarget(
+    {
+      url: 'https://example.test',
+      user: 'someone',
+      appPassword: 'pw',
+      policy: { rootSegments: ['product', 'docstack', 'releases'], baseSegments: [] },
+      restBase: 'pterodocs_release',
+      ownership: 'namespace',
+      status: 'publish',
+      template: '',
+      lang: '',
+      mediaSlugPrefix: 'pterodoc',
+      methodOverride: false,
+      retry: { attempts: 1, baseDelayMs: 0, maxDelayMs: 0 },
+    },
+    { fetch: fake.fetch, sleep: async () => {} },
+  );
+
+  return target.open({ locale: 'en', dryRun: false });
+}
+
+test('a collection with no root page purges everything it holds', async () => {
+  // There is no page at the path to walk down to -- the path belongs to the
+  // post type. Without this, purging a published tree would find nothing and
+  // cheerfully report that nothing was there.
+  const fake = releaseCollection();
+  const report = await purgeTree(await openNamespaced(fake), {
+    segments: ['product', 'docstack', 'releases'],
+    rooted: false,
+    classPrefix: PREFIX,
+    apply: true,
+  });
+
+  assert.equal(report.root, undefined, 'it found a root where there is none');
+  assert.deepEqual(report.removed.map((page) => page.slug).sort(), ['v1', 'v2', 'v2-1']);
+  // A parent is still never removed before its children.
+  assert.ok(
+    report.removed.findIndex((page) => page.slug === 'v2-1') <
+      report.removed.findIndex((page) => page.slug === 'v2'),
+    'the parent went first',
+  );
+  for (const slug of ['v1', 'v2', 'v2-1']) assert.equal(statusOf(fake, slug), 'trash', slug);
+  assert.equal(statusOf(fake, 'hand-written'), 'publish', 'it took someone else’s post');
 });

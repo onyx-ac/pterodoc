@@ -28,6 +28,7 @@ export function resolveTarget(config: ResolvedConfig): Target {
       baseSegments: config.baseSegments,
     },
     restBase: config.restBase,
+    ownership: config.ownership,
     status: config.status,
     template: config.template,
     lang: config.lang,

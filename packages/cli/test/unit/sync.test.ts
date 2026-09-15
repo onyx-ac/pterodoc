@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCapture } from '@pterodocs/core/model';
 import { createMemoryReader } from '@pterodocs/core/model';
-import { resolveConfig, type ResolvedConfig } from '@pterodocs/core';
+import { DEFAULT_LAYOUT, resolveConfig, type ResolvedConfig } from '@pterodocs/core';
 import { createWordpressTarget } from '@pterodocs/wordpress';
 import { runSync } from '@pterodocs/core';
 import type { SiteModel } from '@pterodocs/core/model';
@@ -60,6 +60,7 @@ function targetFor(config: ResolvedConfig, fake: FakeWp) {
       appPassword: config.appPassword,
       policy: { rootSegments: config.rootSegments, baseSegments: config.baseSegments },
       restBase: config.restBase,
+      ownership: config.ownership,
       status: config.status,
       template: config.template,
       lang: config.lang,
@@ -540,5 +541,103 @@ test('an entry that already names a host is left alone', async () => {
   await t.run();
 
   assert.ok(contentOf(t.fake, 'docs').includes('href="https://example.test/repo">Repo<'));
+  await t.cleanup();
+});
+
+/**
+ * A run against a tree that owns a collection of its own.
+ *
+ * Everything a release-notes run does differently, short of the config profile
+ * that will select it: a post type of its own, no page at the root, and a path
+ * that belongs to the post type's rewrite base rather than to any page.
+ */
+async function namespaced(overrides: Partial<ResolvedConfig> = {}) {
+  return setup(
+    {
+      rootSegments: ['products', 'docstack', 'releases'],
+      baseSegments: [],
+      restBase: 'pterodocs_release',
+      ownership: 'namespace',
+      layout: { ...DEFAULT_LAYOUT, nav: 'none' },
+      ...overrides,
+    },
+    createFakeWp({ restBase: 'pterodocs_release' }),
+  );
+}
+
+test('a namespaced tree creates no stub pages and no root of its own', async () => {
+  // The path is the post type's rewrite base, so `products` and `docstack` are
+  // not pages here -- writing them would be pterodocs inventing pages nobody
+  // asked for, in a collection WordPress generates the index for.
+  const t = await namespaced();
+  const { plan } = await t.run();
+
+  assert.equal(plan.summary['create-root'], undefined, 'it created stubs');
+  assert.deepEqual(
+    t.fake.pages.map((page) => page.slug),
+    ['alpha', 'first', 'second', 'beta', 'child'],
+    'the tree root was published as a post',
+  );
+
+  // The top of the tree hangs from the collection, not from a page.
+  for (const slug of ['alpha', 'beta']) {
+    assert.equal(t.fake.pages.find((page) => page.slug === slug)!.parent, 0, slug);
+  }
+  const alpha = t.fake.pages.find((page) => page.slug === 'alpha')!;
+  assert.equal(t.fake.pages.find((page) => page.slug === 'first')!.parent, alpha.id, 'nesting was lost');
+  await t.cleanup();
+});
+
+test('a namespaced run is idempotent', async () => {
+  const t = await namespaced();
+  await t.run();
+  const { plan } = await t.run();
+
+  assert.equal(plan.summary['create'], undefined);
+  assert.equal(plan.summary['update'], undefined);
+  assert.equal(plan.summary['unchanged'], 5);
+  await t.cleanup();
+});
+
+test('a namespaced run never touches the pages collection', async () => {
+  // The whole point of the post type is that release notes are not pages. A
+  // route literal left behind would not fail -- it would quietly read, and
+  // then write, the site's real pages.
+  const t = await namespaced();
+  await t.run();
+
+  const pages = t.fake.calls.filter((call) => /^\/pages(\/|$)/.test(call.path));
+  assert.deepEqual(pages, [], 'it reached the pages collection');
+  assert.ok(
+    t.fake.calls.some((call) => call.path === '/pterodocs_release'),
+    'it never reached its own collection either',
+  );
+  await t.cleanup();
+});
+
+test('a post nothing accounts for is pruned without a root to anchor on', async () => {
+  // The collection holds this tree and nothing else, so the walk starts at 0.
+  // That is only safe because the index is the post type's own -- against
+  // `pages` it would be every page on the site.
+  const t = await namespaced({ prune: true });
+  await t.run();
+
+  t.fake.pages.push({
+    id: 5000,
+    parent: 0,
+    slug: 'withdrawn',
+    status: 'publish',
+    link: 'https://example.test/products/docstack/releases/withdrawn/',
+    title: { raw: 'Withdrawn', rendered: 'Withdrawn' },
+    content: { raw: '<div class="x-docs"></div>' },
+    excerpt: { raw: '' },
+    menu_order: 0,
+    template: '',
+    meta: {},
+  });
+
+  const { plan } = await t.run();
+  assert.equal(plan.summary['prune'], 1);
+  assert.equal(t.fake.pages.find((page) => page.id === 5000)!.status, 'trash');
   await t.cleanup();
 });

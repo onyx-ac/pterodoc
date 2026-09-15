@@ -88,6 +88,12 @@ export interface ResolvedConfig {
    * publishing a page and publishing a release note.
    */
   restBase: string;
+  /**
+   * What the tree owns at its path: a page, or a collection of its own.
+   *
+   * See `WordpressTargetOptions.ownership`.
+   */
+  ownership: 'tree' | 'namespace';
   docsTitle: string;
   status: 'publish' | 'draft' | 'private';
   template: string;
@@ -299,6 +305,17 @@ export function resolveConfig(input: {
     throw new ConfigError(`Layout alignment must be "", "wide" or "full" (got "${layout.align}").`);
   }
 
+  // `page-list` lists the children of a page id, and a tree with no root page
+  // has no id to give it. The block reads a missing parent as the site root
+  // and lists every page on the site, so this cannot be allowed to be a
+  // fallback -- it has to be an error.
+  const ownership: ResolvedConfig['ownership'] = 'tree';
+  if (ownership !== 'tree' && layout.nav === 'page-list') {
+    throw new ConfigError(
+      'layout.nav cannot be "page-list" here: this tree has no root page, so there is no page whose children the block could list. Set it to "none".',
+    );
+  }
+
   const locales: ResolvedConfig['locales'] = flags.allLocales
     ? 'all'
     : flags.locale && flags.locale.length > 0
@@ -337,6 +354,7 @@ export function resolveConfig(input: {
     rootSegments: toSlugSegments(rootPath, 'the target root path'),
     baseSegments: toSlugSegments(basePath, 'the target base'),
     restBase: 'pages',
+    ownership,
     docsTitle: target.title ?? '',
     status,
     template: target.template ?? '',

@@ -37,6 +37,14 @@ export interface PurgeReport {
 export interface PurgeOptions {
   /** Path segments of the tree's root page, from the site root. */
   segments: string[];
+  /**
+   * The tree has a root page to walk down to.
+   *
+   * False for a tree that owns a collection of its own, where the path is a
+   * rewrite base rather than a page: everything the collection holds is the
+   * tree, so there is nothing to find and nothing above it to remove.
+   */
+  rooted?: boolean;
   /** The class prefix the pages were published with. */
   classPrefix: string;
   /** Remove them, rather than only reporting. */
@@ -77,16 +85,18 @@ export async function purgeTree(
 ): Promise<PurgeReport> {
   const log = options.log ?? ((): void => {});
   const index = await session.loadIndex();
-  const root = findByPath(index, options.segments);
+  const rooted = options.rooted !== false;
 
-  if (!root) {
+  const root = rooted ? findByPath(index, options.segments) : undefined;
+  if (rooted && !root) {
     return { removed: [], kept: [], applied: false };
   }
 
   // Everything below the root, deepest first, then the root itself: a parent is
-  // never removed before its children.
-  const below = session.computePrune(index, root.id, new Set<number>());
-  const candidates = [...below, root];
+  // never removed before its children. Without a root the walk starts at the
+  // collection, which holds this tree and nothing else.
+  const below = session.computePrune(index, root?.id ?? 0, new Set<number>());
+  const candidates = root ? [...below, root] : below;
 
   const removed: RemotePage[] = [];
   const kept: RemotePage[] = [];
@@ -111,5 +121,5 @@ export async function purgeTree(
     }
   }
 
-  return { root, removed, kept, applied: options.apply };
+  return { ...(root ? { root } : {}), removed, kept, applied: options.apply };
 }

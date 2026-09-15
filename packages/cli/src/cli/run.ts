@@ -288,15 +288,21 @@ async function commandPurge(
       : `Checking what would be removed at ${config.targetUrl}${where}. Nothing is written without --apply.`,
   );
 
-  const session = await resolveTarget(config).open({ locale: '', dryRun: !apply });
+  const target = resolveTarget(config);
+  const rooted = target.capabilities.publishesTreeRoot;
+  const session = await target.open({ locale: '', dryRun: !apply });
   const report = await purgeTree(session, {
     segments,
+    rooted,
     classPrefix: config.classPrefix,
     apply,
     log: (message) => reporter.detail(message),
   });
 
-  if (!report.root) {
+  // A rooted tree that has no root page has nothing published at all. Without
+  // a root there is no such shortcut: an empty collection simply has nothing
+  // in it, which the counts below say perfectly well.
+  if (rooted && !report.root) {
     reporter.info('Nothing is published there.');
     return EXIT.ok;
   }

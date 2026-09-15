@@ -14,6 +14,15 @@ export interface TargetCapabilities {
   supportsMedia: boolean;
   /** Pages with no source can be removed. */
   supportsPrune: boolean;
+  /**
+   * The tree's own root is published as a page.
+   *
+   * False where the target gives the tree a namespace of its own -- a custom
+   * post type, whose archive is the index -- so there is nothing at the root
+   * for pterodocs to write, and everything it does write hangs from the
+   * collection rather than from a page.
+   */
+  publishesTreeRoot: boolean;
   /** Pages nest; a flat target gets its whole path as one name. */
   supportsHierarchy: boolean;
   /** There is a separate summary field. */

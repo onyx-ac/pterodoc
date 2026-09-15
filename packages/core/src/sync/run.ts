@@ -376,10 +376,22 @@ async function syncVersion(input: SyncVersionInput): Promise<{
   const isNeeded = (treePath: string): boolean =>
     inScope(treePath) || treePath === '' || config.only.startsWith(`${treePath}/`);
 
-  const nodes = [tree.root, ...tree.chain];
+  // Where the target puts a tree with no root page of its own, the root node
+  // is not published and its children hang from the collection instead. It is
+  // still in the tree -- breadcrumbs and the navigation are built from it --
+  // it simply never becomes a page.
+  const publishesRoot = target?.capabilities.publishesTreeRoot !== false;
+  const nodes = publishesRoot ? [tree.root, ...tree.chain] : tree.chain;
+
+  /** The id a node hangs from, or null while it is not known. */
+  const parentOf = (node: PageNode): number | null =>
+    node.parent && (publishesRoot || node.parent.path !== '')
+      ? (ids.get(node.parent.path) ?? null)
+      : rootParentId;
+
   for (const node of nodes) {
     if (!isNeeded(node.path)) continue;
-    const parentId = node.parent ? (ids.get(node.parent.path) ?? null) : rootParentId;
+    const parentId = parentOf(node);
 
     if (!session) {
       ids.set(node.path, null);
@@ -456,7 +468,7 @@ async function syncVersion(input: SyncVersionInput): Promise<{
     if (!session || id === null || id === undefined) continue;
     if (!inScope(node.path) && !created.has(node.path)) continue;
 
-    const parentId = node.parent ? (ids.get(node.parent.path) ?? 0) : (rootParentId ?? 0);
+    const parentId = parentOf(node) ?? 0;
     const remote = await session.fetchPage(id);
     const changed = session.diffPage(remote, page, parentId ?? 0);
 
@@ -517,8 +529,12 @@ async function syncVersion(input: SyncVersionInput): Promise<{
     }
   }
 
-  // Anything under this version's root that no document accounts for.
-  if (session && navRootId !== null) {
+  // Anything under this version's root that no document accounts for. Where
+  // there is no root page the collection itself is the tree, so the walk
+  // starts at 0 -- which is only safe because the index is that post type's
+  // alone, and is why this is anchored on the capability and not on an id.
+  const pruneRootId = publishesRoot ? navRootId : 0;
+  if (session && pruneRootId !== null) {
     if (config.only) {
       issues.add({
         code: 'prune-skipped',
@@ -529,7 +545,7 @@ async function syncVersion(input: SyncVersionInput): Promise<{
       const index = await session.loadIndex();
       const keep = new Set<number>();
       for (const id of ids.values()) if (typeof id === 'number') keep.add(id);
-      for (const page of session.computePrune(index, navRootId, keep)) {
+      for (const page of session.computePrune(index, pruneRootId, keep)) {
         // Position inside the tree is not ownership. Somebody may have added a
         // page under the documentation root, and trashing it because this run
         // did not account for it would be pterodocs deleting someone else's work.
