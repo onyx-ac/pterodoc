@@ -14,7 +14,7 @@ import { ConfigError } from '../errors';
 import { DEFAULT_LAYOUT, type PageLayout } from '../render/page';
 import { DEFAULT_STRINGS, type Strings } from '../render/theme';
 import type { Severity } from '../util/issues';
-import { toSlugSegments } from '../util/paths';
+import { titleCase, toSlugSegments } from '../util/paths';
 import type { PterodocsConfig } from './types';
 
 /** File names tried, in order, when no config is named. */
@@ -100,11 +100,23 @@ export interface ResolvedConfig {
    */
   restBase: string;
   /**
-   * What the tree owns at its path: a page, or a collection of its own.
+   * The shape the tree is published in.
    *
-   * See `WordpressTargetOptions.ownership`.
+   * `tree` nests: documentation is a subtree of pages, rooted at a page
+   * pterodocs writes. `flat` does not: release notes are ordinary posts, with
+   * no root, no nesting, and a URL the site's own settings decide. Where they
+   * sit in relation to the documentation is said with a category instead,
+   * which is the only kind of hierarchy a post has.
    */
-  ownership: 'tree' | 'namespace';
+  ownership: 'tree' | 'flat';
+  /**
+   * Category the posts are filed under, outermost first.
+   *
+   * Built from the documentation's own root path plus a name for the posts, so
+   * the two line up in the site's category tree even though their URLs cannot.
+   * Empty for a documentation run, which files nothing.
+   */
+  categoryPath: string[];
   /** Taxonomy carrying a post's tags, or '' to publish none. */
   taxonomy: string;
   /**
@@ -331,15 +343,18 @@ export function resolveConfig(input: {
   // it may not change is the axis: no field below becomes per-tree.
   const blogging = flags.blog === true;
   const blog = file.blog ?? {};
-  const postType = blog.postType || 'pterodocs_release';
 
   if (blogging) {
     Object.assign(layout, {
-      // There is no root page, so there is nothing for `page-list` to list
-      // from. Forced rather than defaulted, and checked below in case the
-      // file asked for it explicitly.
-      nav: 'none',
+      // A post is a body. There is no tree beside it to navigate, no root to
+      // list from, and no siblings to page through -- and `page-list` with no
+      // root would list every page on the site, which is checked for below in
+      // case the file asked for it explicitly.
       kind: 'single',
+      nav: 'none',
+      breadcrumb: false,
+      pagination: false,
+      childIndex: 'none',
       ...blog.layout,
     });
   }
@@ -348,7 +363,7 @@ export function resolveConfig(input: {
   // has no id to give it. The block reads a missing parent as the site root
   // and lists every page on the site, so this cannot be allowed to be a
   // fallback -- it has to be an error.
-  const ownership: ResolvedConfig['ownership'] = blogging ? 'namespace' : 'tree';
+  const ownership: ResolvedConfig['ownership'] = blogging ? 'flat' : 'tree';
   if (ownership !== 'tree' && layout.nav === 'page-list') {
     throw new ConfigError(
       'layout.nav cannot be "page-list" here: this tree has no root page, so there is no page whose children the block could list. Set it to "none".',
@@ -376,11 +391,21 @@ export function resolveConfig(input: {
     ...(blogging ? [blog.out || 'blog'] : []),
   );
 
-  if (blogging && !blog.base) {
+  // Where the posts are filed. The documentation's own root, titled, with a
+  // name for the posts below it -- so the two line up in the category tree
+  // even though a post's URL is the site's to decide and cannot be moved.
+  if (blogging && !blog.category && !blog.categoryPath?.length) {
     throw new ConfigError(
-      'Publishing the blog needs `blog.base`: the path its archive is served from, e.g. "/products/docstack/releases". It is the post type’s rewrite base, and the pterodocs plugin has to register the same one.',
+      'Publishing the blog needs somewhere to file the posts. Set `blog.category` to what they should be called, e.g. "Release notes" -- it is created under a category path built from `target.root`. Set `blog.categoryPath` instead for a category tree that does not follow the paths.',
     );
   }
+
+  const categoryPath = blogging
+    ? (blog.categoryPath ?? [
+        ...toSlugSegments(rootPath, 'the target root path').map(titleCase),
+        blog.category!,
+      ]).filter((name) => name.trim() !== '')
+    : [];
 
   return {
     siteDir,
@@ -407,16 +432,13 @@ export function resolveConfig(input: {
     targetUrl,
     user,
     appPassword,
-    // The whole path goes in the root, with nothing below it: the base exists
-    // to name a page under the root, and there is no page here at all.
-    rootSegments: toSlugSegments(
-      blogging ? (blog.base ?? '') : rootPath,
-      blogging ? 'the blog base' : 'the target root path',
-    ),
+    rootSegments: toSlugSegments(rootPath, 'the target root path'),
     baseSegments: blogging ? [] : toSlugSegments(basePath, 'the target base'),
-    restBase: blogging ? (blog.restBase || postType) : 'pages',
+    // Both built in, so there is nothing for the two ends to disagree about.
+    restBase: blogging ? 'posts' : 'pages',
     ownership,
-    taxonomy: blogging ? (blog.taxonomy ?? '') : '',
+    categoryPath,
+    taxonomy: blogging && blog.tags !== false ? 'tags' : '',
     // Numbering a newest-first archive means one new post renumbers every
     // older one, and rewrites the lot on the next run.
     menuOrder: blogging ? 'none' : 'sidebar',

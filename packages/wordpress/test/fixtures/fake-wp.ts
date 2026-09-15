@@ -29,6 +29,10 @@ export interface FakeTerm {
   id: number;
   name: string;
   slug: string;
+  /** 0 for a term with no parent; only categories nest. */
+  parent?: number;
+  /** Which taxonomy it belongs to. Defaults to whichever one was configured. */
+  taxonomy?: string;
 }
 
 /** A media item as the fake holds it. */
@@ -103,14 +107,21 @@ export function createFakeWp(
     failures?: Map<string, FakeFailure[]>;
     /** The collection pages are served from, for a custom post type. */
     restBase?: string;
-    /** A taxonomy to serve, and the terms it starts with. */
+    /** The tag taxonomy to serve, and the terms it starts with. */
     taxonomy?: string;
     terms?: FakeTerm[];
   } = {},
 ): FakeWp {
   const restBase = options.restBase ?? 'pages';
   const taxonomy = options.taxonomy ?? '';
-  const terms: FakeTerm[] = [...(options.terms ?? [])];
+  // Categories are always served: a post is filed under one whether or not
+  // the run publishes tags.
+  const taxonomies = [taxonomy, 'categories'].filter(Boolean);
+  const terms: FakeTerm[] = (options.terms ?? []).map((term) => ({
+    parent: 0,
+    taxonomy: taxonomy || 'categories',
+    ...term,
+  }));
   const collection = `/${restBase}`;
   const singular = new RegExp(`^/${restBase}/(\\d+)$`);
   let nextId = 1000;
@@ -174,9 +185,11 @@ export function createFakeWp(
     const pageId = singular.exec(path);
     const mediaId = /^\/media\/(\d+)$/.exec(path);
 
-    if (taxonomy && path === `/${taxonomy}`) {
+    const termRoute = taxonomies.find((name) => path === `/${name}`);
+    if (termRoute) {
+      const mine = terms.filter((term) => term.taxonomy === termRoute);
       if (routedAs === 'GET') {
-        return json(terms, { 'x-wp-totalpages': '1', 'x-wp-total': String(terms.length) });
+        return json(mine, { 'x-wp-totalpages': '1', 'x-wp-total': String(mine.length) });
       }
       if (routedAs === 'POST') {
         const name = String(body['name'] ?? '');
@@ -184,6 +197,8 @@ export function createFakeWp(
           id: (nextId += 1),
           name,
           slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          parent: Number(body['parent'] ?? 0),
+          taxonomy: termRoute,
         };
         terms.push(created);
         return json(created);
@@ -225,6 +240,7 @@ export function createFakeWp(
         template: String(body['template'] ?? ''),
         meta: (body['meta'] as Record<string, unknown>) ?? {},
         ...(taxonomy ? { [taxonomy]: (body[taxonomy] as number[]) ?? [] } : {}),
+        categories: (body['categories'] as number[]) ?? [],
       });
       pages.push(created);
       return json(created);
@@ -250,6 +266,7 @@ export function createFakeWp(
         page.meta = { ...page.meta, ...(body['meta'] as Record<string, unknown>) };
       }
       if (taxonomy && body[taxonomy] !== undefined) page[taxonomy] = body[taxonomy] as number[];
+      if (body['categories'] !== undefined) page['categories'] = body['categories'] as number[];
       return json(page);
     }
 

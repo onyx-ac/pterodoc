@@ -102,11 +102,14 @@ async function commandSync(
   const renderOnly = render || config.offline;
 
   const where = `/${[...config.rootSegments, ...config.baseSegments].join('/')}/`;
-  const what = config.publish === 'blog' ? 'the blog' : 'the documentation';
   reporter.info(
-    renderOnly
-      ? `Rendering ${what} for ${where}.`
-      : `${config.dryRun ? 'Planning' : 'Publishing'} ${what} to ${config.targetUrl}${where} as ${config.status}.`,
+    config.publish === 'blog'
+      ? // Deliberately not a path: a post's permalink comes from the site's
+        // own settings, so there is none to name here.
+        `${config.dryRun ? 'Planning' : 'Publishing'} the blog to ${config.targetUrl} as posts under ${config.categoryPath.join(' > ')}, as ${config.status}.`
+      : renderOnly
+        ? `Rendering the documentation for ${where}.`
+        : `${config.dryRun ? 'Planning' : 'Publishing'} the documentation to ${config.targetUrl}${where} as ${config.status}.`,
   );
 
   const { plan } = await runSync(config, {
@@ -192,7 +195,13 @@ async function commandDoctor(config: ResolvedConfig, reporter: Reporter): Promis
   reporter.info(`  site        ${config.siteDir}`);
   reporter.info(`  target      ${config.targetUrl || 'not set'}`);
   reporter.info(`  root path   /${[...config.rootSegments, ...config.baseSegments].join('/')}/`);
-  reporter.info(`  publishing  ${config.publish === 'blog' ? `the blog, into ${config.restBase}` : 'the documentation, as pages'}`);
+  reporter.info(
+    `  publishing  ${
+      config.publish === 'blog'
+        ? `the blog, as posts under ${config.categoryPath.join(' > ')}`
+        : 'the documentation, as pages'
+    }`,
+  );
   reporter.info(`  credentials ${config.user ? `as ${config.user}` : 'missing'}`);
 
   const reader = readerFor(config, reporter);

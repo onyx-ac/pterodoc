@@ -53,6 +53,7 @@ async function open(fake: FakeWp) {
       restBase: 'pages',
       ownership: 'tree',
       taxonomy: '',
+      categoryPath: [],
       status: 'publish',
       template: '',
       lang: '',
@@ -186,9 +187,9 @@ test('purging a path with nothing published there does nothing at all', async ()
   assert.equal(statusOf(fake, 'docs'), 'publish');
 });
 
-/** A collection of its own, holding release notes and nothing else. */
+/** The posts collection, holding release notes and somebody else's writing. */
 function releaseCollection(): FakeWp {
-  const fake = createFakeWp({ restBase: 'pterodocs_release' });
+  const fake = createFakeWp({ restBase: 'posts' });
   let next = 200;
 
   const add = (parent: number, slug: string, content: string): number => {
@@ -197,10 +198,14 @@ function releaseCollection(): FakeWp {
     return id;
   };
 
+  // Marked, as a post published in flat mode always is: it carries no
+  // generated layout to be recognised by, so the marker is all there is.
   const v2 = add(0, 'v2', generated());
   add(v2, 'v2-1', generated());
   add(0, 'v1', generated());
-  // Somebody's own post, filed under the same type.
+  for (const page of fake.pages) page.meta = { _pterodocs_source: 'pterodocs' };
+
+  // Somebody's own post, in the collection pterodocs publishes into.
   add(0, 'hand-written', '<!-- wp:paragraph --><p>Mine.</p><!-- /wp:paragraph -->');
 
   return fake;
@@ -213,10 +218,11 @@ async function openNamespaced(fake: FakeWp) {
       url: 'https://example.test',
       user: 'someone',
       appPassword: 'pw',
-      policy: { rootSegments: ['product', 'docstack', 'releases'], baseSegments: [] },
-      restBase: 'pterodocs_release',
-      ownership: 'namespace',
+      policy: { rootSegments: ['product', 'docstack'], baseSegments: [] },
+      restBase: 'posts',
+      ownership: 'flat',
       taxonomy: '',
+      categoryPath: [],
       status: 'publish',
       template: '',
       lang: '',
@@ -230,13 +236,13 @@ async function openNamespaced(fake: FakeWp) {
   return target.open({ locale: 'en', dryRun: false });
 }
 
-test('a collection with no root page purges everything it holds', async () => {
-  // There is no page at the path to walk down to -- the path belongs to the
-  // post type. Without this, purging a published tree would find nothing and
-  // cheerfully report that nothing was there.
+test('a flat collection purges what pterodocs wrote, and only that', async () => {
+  // There is no page at the path to walk down to: a post is not under
+  // anything. Without this, purging would find nothing and cheerfully report
+  // that nothing was there.
   const fake = releaseCollection();
   const report = await purgeTree(await openNamespaced(fake), {
-    segments: ['product', 'docstack', 'releases'],
+    segments: ['product', 'docstack'],
     rooted: false,
     classPrefix: PREFIX,
     apply: true,

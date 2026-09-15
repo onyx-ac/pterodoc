@@ -22,17 +22,15 @@ pterodocs_uninstall_site();
 function pterodocs_uninstall_site() {
 	delete_option( 'pterodocs_settings' );
 	delete_option( 'pterodocs_llms_rules' );
-	delete_option( 'pterodocs_post_type_rules' );
 	delete_transient( 'pterodocs_llms_roots' );
 
 	delete_post_meta_by_key( '_pterodocs_llms_index' );
 	delete_post_meta_by_key( '_pterodocs_llms_full' );
 	delete_post_meta_by_key( '_pterodocs_source' );
 
-	// The posts a registered type holds are left exactly where they are.
-	// Uninstalling a plugin is a request to remove the plugin's own data, and
-	// somebody's release notes are not that -- they are writing, and they were
-	// published from a repository that still has them.
+	// The posts themselves are left exactly where they are. Uninstalling a
+	// plugin is a request to remove the plugin's own data, and somebody's
+	// release notes are not that -- they are writing.
 }
 
 // Multisite: the option is per site, so each one has its own to remove.

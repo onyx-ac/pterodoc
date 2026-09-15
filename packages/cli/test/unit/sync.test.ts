@@ -62,6 +62,7 @@ function targetFor(config: ResolvedConfig, fake: FakeWp) {
       restBase: config.restBase,
       ownership: config.ownership,
       taxonomy: config.taxonomy,
+      categoryPath: config.categoryPath,
       status: config.status,
       template: config.template,
       lang: config.lang,
@@ -547,31 +548,30 @@ test('an entry that already names a host is left alone', async () => {
 });
 
 /**
- * A run against a tree that owns a collection of its own.
+ * A run against a flat collection: posts, not a page subtree.
  *
  * Everything a release-notes run does differently, short of the config profile
- * that will select it: a post type of its own, no page at the root, and a path
- * that belongs to the post type's rewrite base rather than to any page.
+ * that selects it: ordinary posts, no page at the root, nothing above them
+ * created, and no nesting -- a post has no parent to nest under.
  */
-async function namespaced(overrides: Partial<ResolvedConfig> = {}) {
+async function flatRun(overrides: Partial<ResolvedConfig> = {}) {
   return setup(
     {
-      rootSegments: ['products', 'docstack', 'releases'],
-      baseSegments: [],
-      restBase: 'pterodocs_release',
-      ownership: 'namespace',
-      layout: { ...DEFAULT_LAYOUT, nav: 'none' },
+      restBase: 'posts',
+      ownership: 'flat',
+      menuOrder: 'none',
+      layout: { ...DEFAULT_LAYOUT, kind: 'single', nav: 'none' },
       ...overrides,
     },
-    createFakeWp({ restBase: 'pterodocs_release' }),
+    createFakeWp({ restBase: 'posts' }),
   );
 }
 
-test('a namespaced tree creates no stub pages and no root of its own', async () => {
-  // The path is the post type's rewrite base, so `products` and `docstack` are
-  // not pages here -- writing them would be pterodocs inventing pages nobody
-  // asked for, in a collection WordPress generates the index for.
-  const t = await namespaced();
+test('a flat run creates no stub pages and no root of its own', async () => {
+  // Nothing above a post is a page: `products` and `docstack` are a path the
+  // documentation uses, and writing them here would be pterodocs inventing
+  // pages nobody asked for.
+  const t = await flatRun();
   const { plan } = await t.run();
 
   assert.equal(plan.summary['create-root'], undefined, 'it created stubs');
@@ -580,18 +580,24 @@ test('a namespaced tree creates no stub pages and no root of its own', async () 
     ['alpha', 'first', 'second', 'beta', 'child'],
     'the tree root was published as a post',
   );
-
-  // The top of the tree hangs from the collection, not from a page.
-  for (const slug of ['alpha', 'beta']) {
-    assert.equal(t.fake.pages.find((page) => page.slug === slug)!.parent, 0, slug);
-  }
-  const alpha = t.fake.pages.find((page) => page.slug === 'alpha')!;
-  assert.equal(t.fake.pages.find((page) => page.slug === 'first')!.parent, alpha.id, 'nesting was lost');
   await t.cleanup();
 });
 
-test('a namespaced run is idempotent', async () => {
-  const t = await namespaced();
+test('a post is never given a parent or a position', async () => {
+  // Neither field is on a post's REST schema. Sending them is at best ignored
+  // and at worst a 400, and either way the values would mean nothing.
+  const t = await flatRun();
+  await t.run();
+
+  for (const call of t.fake.calls.filter((one) => one.routedAs === 'POST')) {
+    assert.equal(call.body['parent'], undefined, JSON.stringify(call.body).slice(0, 120));
+    assert.equal(call.body['menu_order'], undefined, JSON.stringify(call.body).slice(0, 120));
+  }
+  await t.cleanup();
+});
+
+test('a flat run is idempotent', async () => {
+  const t = await flatRun();
   await t.run();
   const { plan } = await t.run();
 
@@ -601,36 +607,34 @@ test('a namespaced run is idempotent', async () => {
   await t.cleanup();
 });
 
-test('a namespaced run never touches the pages collection', async () => {
-  // The whole point of the post type is that release notes are not pages. A
-  // route literal left behind would not fail -- it would quietly read, and
-  // then write, the site's real pages.
-  const t = await namespaced();
+test('a flat run never touches the pages collection', async () => {
+  // A release note is not a page. A route literal left behind would not fail
+  // -- it would quietly read, and then write, the site's real pages.
+  const t = await flatRun();
   await t.run();
 
   const pages = t.fake.calls.filter((call) => /^\/pages(\/|$)/.test(call.path));
   assert.deepEqual(pages, [], 'it reached the pages collection');
-  assert.ok(
-    t.fake.calls.some((call) => call.path === '/pterodocs_release'),
-    'it never reached its own collection either',
-  );
+  assert.ok(t.fake.calls.some((call) => call.path === '/posts'), 'it never reached posts either');
   await t.cleanup();
 });
 
-test('a post nothing accounts for is pruned without a root to anchor on', async () => {
-  // The collection holds this tree and nothing else, so the walk starts at 0.
-  // That is only safe because the index is the post type's own -- against
-  // `pages` it would be every page on the site.
-  const t = await namespaced({ prune: true });
+test('only posts pterodocs wrote are pruned, never the site’s own', async () => {
+  // The collection is every post on the site, so the walk from 0 reaches
+  // other people's writing. The ownership marker is the only thing between
+  // that and pterodocs trashing it.
+  const t = await flatRun({ prune: true });
   await t.run();
 
   t.fake.pages.push(
-    makePage({ id: 5000, parent: 0, slug: 'withdrawn', content: { raw: '<div class="x-docs"></div>' } }),
+    makePage({ id: 5000, slug: 'withdrawn', meta: { _pterodocs_source: 'pterodocs' } }),
+    makePage({ id: 5001, slug: 'someones-post', content: { raw: '<p>Mine.</p>' } }),
   );
 
   const { plan } = await t.run();
-  assert.equal(plan.summary['prune'], 1);
+  assert.equal(plan.summary['prune'], 1, JSON.stringify(plan.summary));
   assert.equal(t.fake.pages.find((page) => page.id === 5000)!.status, 'trash');
+  assert.equal(t.fake.pages.find((page) => page.id === 5001)!.status, 'publish', 'it took a post of theirs');
   await t.cleanup();
 });
 
@@ -683,6 +687,7 @@ async function withBlog(overrides: Partial<ResolvedConfig> = {}, fake = createFa
               frontMatter: {},
               sidebarName: 'blog',
               date: '2026-01-01T09:30:00.482Z',
+              authors: [{ name: 'Onyx' }],
               tags: [
                 { label: 'release', permalink: '/blog/tags/release' },
                 { label: 'client', permalink: '/blog/tags/client' },
@@ -761,10 +766,11 @@ test('a post dated ahead of now is scheduled, said so, and not fought over', asy
  * A full `--blog` run: the config profile selects everything, rather than the
  * test setting the seven scalars it happens to know about.
  */
-async function blogRun(taxonomy = '') {
+async function blogRun(withTags = true) {
   const fake = createFakeWp({
-    restBase: 'pterodocs_release',
-    ...(taxonomy ? { taxonomy, terms: [{ id: 40, name: 'release', slug: 'release' }] } : {}),
+    restBase: 'posts',
+    taxonomy: 'tags',
+    terms: withTags ? [{ id: 40, name: 'release', slug: 'release' }] : [],
   });
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pterodocs-out-'));
   // No `outDir` of its own: the profile decides it, and that is the thing
@@ -776,7 +782,7 @@ async function blogRun(taxonomy = '') {
       target: { root: '/products/docstack', base: 'docs' },
       render: { classPrefix: 'x' },
       media: { upload: false },
-      blog: { base: '/products/docstack/releases', ...(taxonomy ? { taxonomy } : {}) },
+      blog: { category: 'Release notes', tags: withTags },
     },
     fileDir: outDir,
   });
@@ -784,7 +790,7 @@ async function blogRun(taxonomy = '') {
   return withBlog(config, fake);
 }
 
-test('a --blog run publishes into the post type, with no page anywhere', async () => {
+test('a --blog run publishes ordinary posts, filed under a category', async () => {
   const t = await blogRun();
   const { plan } = await t.run();
 
@@ -792,19 +798,52 @@ test('a --blog run publishes into the post type, with no page anywhere', async (
   assert.deepEqual(t.fake.pages.map((page) => page.slug), ['v2']);
 
   const post = t.fake.pages[0]!;
-  assert.equal(post.parent, 0, 'it hangs from a page that does not exist');
-  assert.equal(post.menu_order, 0, 'a newest-first archive was numbered');
   assert.equal(post.date_gmt, '2026-01-01T09:30:00');
   assert.equal(post.meta['_pterodocs_source'], 'pterodocs', 'nothing marks it as ours');
 
-  // The index is the archive WordPress generates, so nothing may claim to list
-  // the children of a page -- `parentPageID: 0` is every page on the site.
+  // A post is a body: nothing beside it to navigate, nothing to page through,
+  // and `page-list` with no root would list every page on the site.
   assert.equal(post.content.raw.includes('page-list'), false, post.content.raw.slice(0, 300));
 
   const { plan: second } = await t.run();
   assert.equal(second.summary['create'], undefined);
   assert.equal(second.summary['update'], undefined);
   assert.equal(second.summary['unchanged'], 1);
+  await t.cleanup();
+});
+
+test('the category is created as a path, mirroring the documentation root', async () => {
+  // A post's URL cannot be moved under the documentation, so the category is
+  // where the two are made to line up.
+  const t = await blogRun();
+  await t.run();
+
+  const named = (name: string) => t.fake.terms.find((term) => term.name === name && term.taxonomy === 'categories');
+  const products = named('Products');
+  const docstack = named('Docstack');
+  const releases = named('Release notes');
+
+  assert.ok(products && docstack && releases, t.fake.terms.map((term) => term.name).join(', '));
+  assert.equal(products!.parent, 0);
+  assert.equal(docstack!.parent, products!.id);
+  assert.equal(releases!.parent, docstack!.id);
+
+  // Filed under the leaf, not under every level of the path.
+  assert.deepEqual(t.fake.pages[0]!['categories'], [releases!.id]);
+  await t.cleanup();
+});
+
+test('the category path is walked once, not once per post', async () => {
+  const t = await blogRun();
+  await t.run();
+  const created = t.fake.terms.filter((term) => term.taxonomy === 'categories').length;
+
+  await t.run();
+  assert.equal(
+    t.fake.terms.filter((term) => term.taxonomy === 'categories').length,
+    created,
+    'it made the category tree again',
+  );
   await t.cleanup();
 });
 
@@ -822,17 +861,16 @@ test('a --blog run writes where a docs run would not overwrite it', async () => 
 test('tags become real terms, existing ones reused and new ones created', async () => {
   // WordPress takes term ids over REST, not names, so a tag can only be
   // written once the site has a term for it.
-  const t = await blogRun('pterodocs_release_tag');
+  const t = await blogRun();
   await t.run();
 
-  const release = t.fake.terms.find((term) => term.name === 'release')!;
-  const client = t.fake.terms.find((term) => term.name === 'client');
+  const release = t.fake.terms.find((term) => term.name === 'release' && term.taxonomy === 'tags')!;
+  const client = t.fake.terms.find((term) => term.name === 'client' && term.taxonomy === 'tags');
   assert.equal(release.id, 40, 'the existing term was duplicated rather than reused');
   assert.ok(client, 'the missing term was never created');
 
-  const post = t.fake.pages.find((page) => page.slug === 'v2')!;
   assert.deepEqual(
-    (post['pterodocs_release_tag'] as number[]).slice().sort((a, b) => a - b),
+    (t.fake.pages[0]!['tags'] as number[]).slice().sort((a, b) => a - b),
     [release.id, client!.id].sort((a, b) => a - b),
   );
   await t.cleanup();
@@ -841,7 +879,7 @@ test('tags become real terms, existing ones reused and new ones created', async 
 test('tags do not churn on a second run', async () => {
   // Terms come back in whatever order WordPress likes, and as ids where the
   // document wrote names -- either would differ forever if compared naively.
-  const t = await blogRun('pterodocs_release_tag');
+  const t = await blogRun();
   await t.run();
   const created = t.fake.terms.length;
 
@@ -851,11 +889,32 @@ test('tags do not churn on a second run', async () => {
   await t.cleanup();
 });
 
-test('a run with no taxonomy configured publishes without tags, not without posts', async () => {
-  const t = await blogRun();
+test('tags turned off publish the posts, not nothing', async () => {
+  const t = await blogRun(false);
   await t.run();
 
   assert.ok(t.fake.pages.find((page) => page.slug === 'v2'), 'the post was not published');
-  assert.equal(t.fake.calls.some((call) => call.path.includes('tag')), false, 'it asked for a taxonomy');
+  assert.equal(t.fake.calls.some((call) => call.path === '/tags'), false, 'it asked for tags anyway');
+  await t.cleanup();
+});
+
+test('an author the source names is reported, not silently dropped', async () => {
+  // WordPress renders the byline itself, from the account that wrote the post.
+  // Publishing our own would duplicate or contradict it, and mapping the name
+  // to a user means creating or matching accounts -- so it is said instead.
+  const t = await blogRun();
+  const { plan } = await t.run();
+
+  const said = plan.issues.find((issue) => issue.code === 'authors-not-mapped');
+  assert.ok(said, plan.issues.map((issue) => issue.code).join(', '));
+  assert.match(said!.message, /Onyx/);
+  await t.cleanup();
+});
+
+test('documentation with no authors says nothing about them', async () => {
+  const t = await setup();
+  const { plan } = await t.run();
+
+  assert.equal(plan.issues.some((issue) => issue.code === 'authors-not-mapped'), false);
   await t.cleanup();
 });

@@ -114,14 +114,14 @@ test('a configuration file is discovered by name, in order', () => {
   assert.equal(CONFIG_NAMES[0], 'pterodocs.config.mjs');
 });
 
-/** A run given `--blog`, with a config that names where it goes. */
+/** A run given `--blog`, with a config that names where the posts are filed. */
 function blogConfig(over: Record<string, unknown> = {}) {
   return resolveConfig({
     flags: { blog: true },
     env: CREDENTIALS,
     file: {
       target: { root: '/products/docstack', base: 'docs' },
-      blog: { base: '/products/docstack/releases', ...over },
+      blog: { category: 'Release notes', ...over },
     },
     fileDir: path.resolve('/site'),
   });
@@ -131,16 +131,26 @@ test('the blog profile folds down into the same shape, with different values', (
   const config = blogConfig();
 
   assert.equal(config.publish, 'blog');
-  assert.equal(config.ownership, 'namespace');
-  assert.equal(config.restBase, 'pterodocs_release');
-  // The whole path is the root: the base names a page under it, and there is
-  // no page here at all.
-  assert.deepEqual(config.rootSegments, ['products', 'docstack', 'releases']);
-  assert.deepEqual(config.baseSegments, []);
+  assert.equal(config.ownership, 'flat');
+  assert.equal(config.restBase, 'posts');
+  assert.equal(config.taxonomy, 'tags');
   assert.deepEqual(config.sidebars, ['blog']);
   assert.equal(config.layout.nav, 'none');
+  assert.equal(config.layout.kind, 'single');
   assert.equal(config.menuOrder, 'none');
   assert.deepEqual(config.llms, { index: false, full: false, publish: false, title: '', description: '' });
+});
+
+test('the category is built from the documentation’s own root', () => {
+  // A post's URL is the site's to decide and cannot be moved under the docs.
+  // The category is the one hierarchy a post has, so that is where the two
+  // are made to line up.
+  assert.deepEqual(blogConfig().categoryPath, ['Products', 'Docstack', 'Release notes']);
+});
+
+test('a category tree that does not follow the paths can be named outright', () => {
+  const config = blogConfig({ categoryPath: ['Engineering', 'Releases'], category: 'ignored' });
+  assert.deepEqual(config.categoryPath, ['Engineering', 'Releases']);
 });
 
 test('a docs run is untouched by a blog section being present', () => {
@@ -148,7 +158,7 @@ test('a docs run is untouched by a blog section being present', () => {
     env: CREDENTIALS,
     file: {
       target: { root: '/products/docstack', base: 'docs' },
-      blog: { base: '/products/docstack/releases' },
+      blog: { category: 'Release notes' },
     },
   });
 
@@ -156,6 +166,7 @@ test('a docs run is untouched by a blog section being present', () => {
   assert.equal(config.ownership, 'tree');
   assert.equal(config.restBase, 'pages');
   assert.equal(config.menuOrder, 'sidebar');
+  assert.deepEqual(config.categoryPath, []);
   assert.deepEqual(config.rootSegments, ['products', 'docstack']);
   assert.deepEqual(config.baseSegments, ['docs']);
 });
@@ -168,20 +179,17 @@ test('the blog writes to a directory of its own', () => {
   assert.equal(blogConfig().outDir.startsWith(docs.outDir), true);
 });
 
-test('publishing the blog somewhere unnamed is refused rather than guessed', () => {
+test('publishing the blog with nowhere to file it is refused rather than guessed', () => {
   assert.throws(
     () => resolveConfig({ flags: { blog: true }, env: CREDENTIALS, file: {} }),
-    /blog\.base/,
+    /blog\.category/,
   );
 });
 
 test('a blog cannot ask for a page list, because it has no page to list from', () => {
   // `core/page-list` reads a missing parent as the site root and lists every
   // page on the site. Silently ignoring the setting would publish that.
-  assert.throws(
-    () => blogConfig({ layout: { nav: 'page-list' } }),
-    /page-list/,
-  );
+  assert.throws(() => blogConfig({ layout: { nav: 'page-list' } }), /page-list/);
 });
 
 test('one blog instance, named when there is a choice', () => {

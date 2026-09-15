@@ -30,6 +30,7 @@ export function resolveTarget(config: ResolvedConfig): Target {
     restBase: config.restBase,
     ownership: config.ownership,
     taxonomy: config.taxonomy,
+    categoryPath: config.categoryPath,
     status: config.status,
     template: config.template,
     lang: config.lang,

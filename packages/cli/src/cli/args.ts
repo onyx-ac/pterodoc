@@ -42,9 +42,9 @@ Target
   --only <prefix>             Restrict writes to pages under <prefix>.
   --dry-run                   Plan and render, change nothing.
   --prune                     Trash pages with no source document.
-  --blog                      Publish the site's blog into its own post type,
-                              rather than the documentation. Needs blog.base in
-                              the config, and the pterodocs plugin installed.
+  --blog                      Publish the site's blog as ordinary posts, rather
+                              than the documentation. Needs blog.category in the
+                              config, which is where the posts are filed.
   --apply                     With purge, actually remove; otherwise it only reports.
   --offline                   Render only; never open a session.
   --no-media                  Skip uploads; leave image URLs as written.

@@ -165,11 +165,16 @@ export interface LlmsConfig {
 /**
  * Publishing the site's blog, rather than its documentation.
  *
- * A blog is not documentation and does not want to be published as one. It is
- * dated, it accumulates, and its index is an archive ordered newest first --
- * which WordPress generates for a post type but not for a page. So `--blog`
- * publishes into a custom post type the pterodocs plugin registers, and the
- * settings that differ live here rather than forcing a second config file.
+ * A blog is not documentation and does not want to be published as one. Its
+ * posts are dated, they accumulate, and they belong in the site's own feed and
+ * categories alongside everything else written there -- so `--blog` publishes
+ * them as ordinary WordPress posts.
+ *
+ * That means their URLs are the site's to decide, not pterodocs's: a post sits
+ * wherever the permalink structure puts it, and nothing can move it under the
+ * documentation. What can line the two up is the category, which is the only
+ * hierarchy a post has -- so the posts are filed under a category built from
+ * the documentation's own root path.
  *
  * Everything not named here is taken from the run it is folded over: the same
  * site, the same credentials, the same class prefix, the same locale handling.
@@ -183,23 +188,27 @@ export interface BlogConfig {
    */
   instance?: string;
   /**
-   * Path the archive is served from, e.g. `/products/docstack/releases`.
+   * What the posts' own category is called, e.g. `Release notes`.
    *
-   * It is the post type's rewrite base, not a page. Nothing is published at
-   * it -- WordPress generates the index.
+   * It is created under a category path built from `target.root`, so a site
+   * whose documentation is at `/products/docstack` files its release notes
+   * under Products > DocStack > Release notes.
    */
-  base?: string;
-  /** Post type to publish into. Must match what the plugin registers. */
-  postType?: string;
-  /** Its REST base. Defaults to the post type's name, which is what the plugin uses. */
-  restBase?: string;
-  /** Taxonomy that carries the posts' tags, or '' to publish no tags. */
-  taxonomy?: string;
+  category?: string;
+  /**
+   * File the posts under this category path instead, outermost first.
+   *
+   * For a site whose categories do not mirror its paths. Given, `category` is
+   * ignored and `target.root` is not consulted.
+   */
+  categoryPath?: string[];
+  /** Publish the posts' tags. On by default. */
+  tags?: boolean;
   /** Status applied to every post. Defaults to the target's. */
   status?: 'publish' | 'draft' | 'private';
-  /** Template slug. Defaults to none, whatever the documentation uses. */
+  /** Template slug. Defaults to none. */
   template?: string;
-  /** Layout overrides. `nav` is forced to `none`: there is no root to list from. */
+  /** Layout overrides. A post is published as a single column, with no navigation. */
   layout?: Partial<PageLayout>;
   /**
    * Output subdirectory, below the configured one.

@@ -43,6 +43,7 @@ export const WORDPRESS_CAPABILITIES: TargetCapabilities = {
   supportsTemplates: true,
   supportsDrafts: true,
   publishesTreeRoot: true,
+  predictableUrls: true,
 };
 
 /** Content a page holds between being created and being rendered. */
@@ -74,19 +75,25 @@ export interface WordpressTargetOptions {
    */
   restBase: string;
   /**
-   * What the tree owns at its path.
+   * The shape the tree is published in.
    *
-   * `tree` is the documentation case: the last segment of the path is a page
-   * pterodocs writes, anything above it is created once as a stub, and the
-   * whole site shares the `pages` collection -- so ownership has to be read
-   * off each page.
+   * `tree` is the documentation case: pages nest, the last segment of the path
+   * is a page pterodocs writes, and anything above it is created once as a
+   * stub.
    *
-   * `namespace` is the post type case: the collection holds nothing but this
-   * tree, its archive is the index, and there is no page at the root because
-   * WordPress generates it. Nothing above the path is created either -- the
-   * rewrite base is the post type's, not a page's.
+   * `flat` is the post case: posts do not nest, there is no root, nothing
+   * above them is created, and their URLs come from the site's own permalink
+   * settings rather than from the path. They are recognised later by the
+   * metadata marker rather than by where they sit.
    */
-  ownership: 'tree' | 'namespace';
+  ownership: 'tree' | 'flat';
+  /**
+   * Category the posts are filed under, outermost first.
+   *
+   * Created if missing. Empty files nothing, which is what a documentation run
+   * wants.
+   */
+  categoryPath: string[];
   /**
    * Taxonomy carrying a post's tags, or empty for none.
    *
@@ -112,11 +119,11 @@ export function createWordpressTarget(
   deps: WordpressTargetDeps = {},
 ): Target {
   const log = deps.log ?? ((): void => {});
-  const namespaced = options.ownership === 'namespace';
+  const flat = options.ownership === 'flat';
 
-  // A namespaced tree owns its whole path through the post type's rewrite
-  // base, so there is no page to own and nothing above it to create.
-  const { stubSegments, rootSlug } = namespaced
+  // Posts have no path of pterodocs's choosing: nothing above them is a page,
+  // and there is no page at the root either.
+  const { stubSegments, rootSlug } = flat
     ? { stubSegments: [] as string[], rootSlug: '' }
     : splitOwnership(options.policy);
 
@@ -124,7 +131,7 @@ export function createWordpressTarget(
   // the last segment of the configured path rather than anything the model
   // supplied.
   const slugFor = (page: { path: string; slug: string }): string =>
-    !namespaced && page.path === '' ? rootSlug : page.slug;
+    !flat && page.path === '' ? rootSlug : page.slug;
 
   const makeClient = (locale: string): WpClient =>
     new WpClient({
@@ -142,7 +149,12 @@ export function createWordpressTarget(
 
   return {
     name: 'wordpress',
-    capabilities: { ...WORDPRESS_CAPABILITIES, publishesTreeRoot: !namespaced },
+    capabilities: {
+      ...WORDPRESS_CAPABILITIES,
+      publishesTreeRoot: !flat,
+      supportsHierarchy: !flat,
+      predictableUrls: !flat,
+    },
     rootPath: hrefFor(options.policy, '', { versionName: '', locale: options.policy.primaryLocale ?? '' }),
 
     hrefFor(treePath, context) {
@@ -151,10 +163,12 @@ export function createWordpressTarget(
 
     async open(context): Promise<TargetSession> {
       const client = makeClient(context.locale);
-      const posts = createPostsApi(client, options.restBase, options.taxonomy);
+      const posts = createPostsApi(client, options.restBase, { taxonomy: options.taxonomy, flat });
       const dryRun = context.dryRun;
       let index: RemotePage[] | undefined;
       let terms: TermIndex | undefined;
+      let categoryId: number | undefined;
+      const categoryWarnings: string[] = [];
 
       return {
         async loadIndex(): Promise<RemotePage[]> {
@@ -164,6 +178,15 @@ export function createWordpressTarget(
           // left to ask what each label is called numerically.
           if (options.taxonomy && !terms) {
             terms = await loadTermIndex(client, options.taxonomy, dryRun);
+          }
+
+          // Once for the whole run: every post is filed under the same one,
+          // and walking the path is a request per level.
+          if (options.categoryPath.length > 0 && categoryId === undefined) {
+            const categories = await loadTermIndex(client, 'categories', dryRun);
+            const { id, warnings } = await categories.ensurePath(options.categoryPath);
+            categoryId = id ?? 0;
+            categoryWarnings.push(...warnings);
           }
           return index;
         },
@@ -175,9 +198,8 @@ export function createWordpressTarget(
           const created: { path: string; id: number | null }[] = [];
           let parentId: number | null = 0;
 
-          // Nothing to walk: the post type's own rewrite base puts the tree
-          // where it belongs, and its posts hang from the collection root.
-          if (namespaced) return { id: 0, created };
+          // Nothing to walk: a post is not under anything.
+          if (flat) return { id: 0, created };
 
           for (const slug of stubSegments) {
             if (parentId === null) {
@@ -228,7 +250,7 @@ export function createWordpressTarget(
                 `${request.path || '(root)'} matches a page in the trash. It will be republished; restore or delete it permanently if that is not what you want.`,
               );
             }
-            return { id: existing.id, created: false, warnings };
+            return { id: existing.id, created: false, warnings, link: existing.link };
           }
           if (dryRun) return { id: null, created: true, warnings };
 
@@ -236,12 +258,12 @@ export function createWordpressTarget(
           const created = await posts.create({
             title: request.title,
             slug,
-            parent: request.parentId,
+            // A post has neither; the fields are absent from its REST schema.
+            ...(flat ? {} : { parent: request.parentId, menu_order: request.menuOrder }),
             status: 'draft',
-            menu_order: request.menuOrder,
             content: PLACEHOLDER,
           });
-          return { id: created.id, created: true, warnings };
+          return { id: created.id, created: true, warnings, link: created.link };
         },
 
         async fetchPage(id: number): Promise<RemotePage> {
@@ -263,6 +285,7 @@ export function createWordpressTarget(
             template: options.template,
             isRoot: rendered.path === '',
             slug: slugFor(rendered),
+            hierarchical: !flat,
             ...(tags ? { tags } : {}),
           });
         },
@@ -273,19 +296,22 @@ export function createWordpressTarget(
             title: page.title,
             content: page.content,
             excerpt: page.excerpt,
-            parent: parentId,
             slug: slugFor(page),
             status: options.status,
-            menu_order: page.menuOrder,
             template: options.template,
+            // Neither field exists on a post, and a post is never nested.
+            ...(flat ? {} : { parent: parentId, menu_order: page.menuOrder }),
           };
+
+          if (categoryId) body.categories = [categoryId];
+          warnings.push(...categoryWarnings.splice(0));
           const meta: Record<string, unknown> = { ...page.meta };
 
           // A post type registers this key, so it can be written; `pages` does
           // not, and WordPress silently drops meta it does not know. Sending it
           // where it cannot be stored would achieve nothing and risk a 400 on
           // a site that is strict about unregistered keys.
-          if (namespaced) meta[OWNERSHIP_META] = OWNERSHIP_VALUE;
+          if (flat) meta[OWNERSHIP_META] = OWNERSHIP_VALUE;
           if (Object.keys(meta).length > 0) body.meta = meta;
 
           if (page.tags && terms) {
@@ -323,7 +349,7 @@ export function createWordpressTarget(
               // and prune and purge would leave it standing forever. Its own
               // post type registers the key, so if this is refused too the
               // problem is not the key and the error is worth raising.
-              if (namespaced) body.meta = { [OWNERSHIP_META]: OWNERSHIP_VALUE };
+              if (flat) body.meta = { [OWNERSHIP_META]: OWNERSHIP_VALUE };
               else delete body.meta;
 
               warnings.push(
@@ -368,7 +394,15 @@ export function createWordpressTarget(
         },
 
         computePrune(pages, rootId, keepIds): RemotePage[] {
-          return computePrune(pages, rootId, keepIds);
+          // A flat collection is every post on the site, most of them written
+          // by people rather than by pterodocs. The reconciler checks each
+          // candidate's ownership before trashing it, but that is a request
+          // each -- so the ones that plainly are not ours never get that far.
+          const candidates = flat
+            ? pages.filter((page) => page.meta?.[OWNERSHIP_META] === OWNERSHIP_VALUE)
+            : pages;
+
+          return computePrune(candidates, rootId, keepIds);
         },
 
         async removePage(page: RemotePage): Promise<void> {

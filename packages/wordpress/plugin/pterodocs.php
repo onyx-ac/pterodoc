@@ -29,7 +29,7 @@ define( 'PTERODOCS_DIR', plugin_dir_path( __FILE__ ) );
 define( 'PTERODOCS_URL', plugin_dir_url( __FILE__ ) );
 
 require_once PTERODOCS_DIR . 'inc/Settings.php';
-require_once PTERODOCS_DIR . 'inc/PostTypes.php';
+require_once PTERODOCS_DIR . 'inc/Posts.php';
 require_once PTERODOCS_DIR . 'inc/Markup.php';
 require_once PTERODOCS_DIR . 'inc/Prism.php';
 require_once PTERODOCS_DIR . 'inc/Assets.php';
@@ -45,29 +45,15 @@ require_once PTERODOCS_DIR . 'inc/Llms.php';
  */
 function bootstrap(): void {
 	Settings::init();
-	// Before Llms, which registers metadata and routes per post type and so
-	// cannot run before the types exist.
-	PostTypes::init();
+	Posts::init();
 	Assets::init();
 	Render::init();
 	Llms::init();
 
 	// Rewrite rules only exist once they have been flushed, and flushing is
 	// expensive enough that it belongs on activation rather than on every load.
-	register_activation_hook(
-		PTERODOCS_FILE,
-		static function (): void {
-			PostTypes::activate();
-			Llms::activate();
-		}
-	);
-	register_deactivation_hook(
-		PTERODOCS_FILE,
-		static function (): void {
-			PostTypes::deactivate();
-			Llms::deactivate();
-		}
-	);
+	register_activation_hook( PTERODOCS_FILE, array( Llms::class, 'activate' ) );
+	register_deactivation_hook( PTERODOCS_FILE, array( Llms::class, 'deactivate' ) );
 
 	add_action(
 		'init',

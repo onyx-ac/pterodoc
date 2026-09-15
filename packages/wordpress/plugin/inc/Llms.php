@@ -74,9 +74,7 @@ final class Llms {
 	 * Register the metadata and the routes.
 	 */
 	public static function register(): void {
-		// Every type pterodocs publishes into, not only pages: a tree in a post
-		// type of its own has an llms.txt exactly as a documentation tree does.
-		$types = array_merge( array( 'page' ), PostTypes::names() );
+		$types = Posts::types();
 
 		foreach ( array( self::META_INDEX, self::META_FULL ) as $key ) {
 			foreach ( $types as $type ) {
@@ -134,9 +132,7 @@ final class Llms {
 			return;
 		}
 
-		// `get_page_by_path` looks at pages unless told otherwise, so a tree
-		// published into a post type of its own would never be found.
-		$page = get_page_by_path( $path, OBJECT, array_merge( array( 'page' ), PostTypes::names() ) );
+		$page = get_page_by_path( $path );
 		if ( ! $page instanceof \WP_Post ) {
 			return;
 		}
@@ -195,7 +191,7 @@ final class Llms {
 
 		$roots = get_posts(
 			array(
-				'post_type'        => array_merge( array( 'page' ), PostTypes::names() ),
+				'post_type'        => Posts::types(),
 				'post_status'      => 'publish',
 				'meta_key'         => self::META_INDEX, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
 				'fields'           => 'ids',
@@ -257,7 +253,7 @@ final class Llms {
 	 * than a mechanism. It costs one link element on documentation pages only.
 	 */
 	public static function link_tag(): void {
-		if ( ! is_singular( array_merge( array( 'page' ), PostTypes::names() ) ) ) {
+		if ( ! is_singular( Posts::types() ) ) {
 			return;
 		}
 

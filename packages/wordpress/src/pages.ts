@@ -17,15 +17,16 @@ import { FULL_PAGE_FIELDS, PAGE_FIELDS, withTaxonomy, type WpClient } from './cl
 /** WordPress's own post shape, narrowed to what is read. */
 interface WpPage {
   id: number;
-  parent: number;
+  /** Absent entirely for a type that does not nest, which reads as the root. */
+  parent?: number;
   slug: string;
   status: string;
   link: string;
   title?: { raw?: string; rendered?: string };
   content?: { raw?: string };
   excerpt?: { raw?: string };
-  menu_order: number;
-  template: string;
+  menu_order?: number;
+  template?: string;
   meta?: Record<string, unknown>;
   date_gmt?: string | null;
   /** Term ids, under a field named after the taxonomy. */
@@ -63,15 +64,15 @@ export function toWpDate(iso: string): string | undefined {
 export function toRemotePage(page: WpPage): RemotePage {
   return {
     id: page.id,
-    parent: page.parent,
+    parent: page.parent ?? 0,
     slug: page.slug,
     status: page.status,
     link: page.link,
     title: page.title?.raw ?? page.title?.rendered ?? '',
     ...(page.content?.raw !== undefined ? { content: page.content.raw } : {}),
     ...(page.excerpt?.raw !== undefined ? { excerpt: page.excerpt.raw } : {}),
-    menuOrder: page.menu_order,
-    template: page.template,
+    menuOrder: page.menu_order ?? 0,
+    template: page.template ?? '',
     meta: page.meta,
     ...(page.date_gmt ? { date: page.date_gmt } : {}),
   };
@@ -129,10 +130,28 @@ export interface PostsApi {
  * @param restBase The collection, without a slash: `pages`, or a post type's
  *   own `rest_base`.
  */
-export function createPostsApi(client: WpClient, restBase: string, taxonomy = ''): PostsApi {
+export function createPostsApi(
+  client: WpClient,
+  restBase: string,
+  options: {
+    /** Taxonomy whose terms are read and written with each post. */
+    taxonomy?: string;
+    /**
+     * The type does not nest.
+     *
+     * A post has no `parent`: the field is absent from its REST schema, so it
+     * can neither be filtered on nor sent. Ownership is then read from the
+     * metadata marker instead of from position, which is why the index carries
+     * `meta` in this mode.
+     */
+    flat?: boolean;
+  } = {},
+): PostsApi {
+  const taxonomy = options.taxonomy ?? '';
+  const flat = options.flat === true;
   const collection = `/${restBase}`;
   const one = (id: number): string => `${collection}/${id}`;
-  const listFields = withTaxonomy(PAGE_FIELDS, taxonomy);
+  const listFields = withTaxonomy(flat ? `${PAGE_FIELDS},meta` : PAGE_FIELDS, taxonomy);
   const fullFields = withTaxonomy(FULL_PAGE_FIELDS, taxonomy);
 
   /** A post's own terms, when a taxonomy was named. */
@@ -146,6 +165,7 @@ export function createPostsApi(client: WpClient, restBase: string, taxonomy = ''
     const tags = tagsOf(page);
     return { ...toRemotePage(page), ...(tags ? { tags } : {}) };
   };
+
 
   return {
     restBase,
@@ -171,10 +191,17 @@ export function createPostsApi(client: WpClient, restBase: string, taxonomy = ''
       // The index is searched when one was supplied, because a whole-site index
       // is one request where per-page lookups are hundreds.
       if (index) {
-        candidates = index.filter((page) => page.parent === parent && page.slug === slug);
+        candidates = index.filter((page) => (flat || page.parent === parent) && page.slug === slug);
       } else {
         const { data } = await client.request<WpPage[]>('GET', collection, {
-          query: { parent, slug, status: 'any', context: 'edit', per_page: 100, _fields: listFields },
+          query: {
+            ...(flat ? {} : { parent }),
+            slug,
+            status: 'any',
+            context: 'edit',
+            per_page: 100,
+            _fields: listFields,
+          },
         });
         candidates = (Array.isArray(data) ? data : []).map(convert);
       }
@@ -236,6 +263,14 @@ export function diffPage(
      * make, being synchronous by design.
      */
     tags?: number[];
+    /**
+     * The type nests.
+     *
+     * False for a post, which has no `parent` and no `menu_order` at all --
+     * comparing either against what the tree wanted would differ on every run,
+     * forever, over fields the target cannot store.
+     */
+    hierarchical?: boolean;
   },
 ): string[] {
   const changed: string[] = [];
@@ -257,9 +292,10 @@ export function diffPage(
     wanted !== undefined &&
     wanted > (context.now ?? Date.now());
   if (!scheduled && remote.status !== context.status) changed.push('status');
-  if (!context.isRoot && remote.menuOrder !== rendered.menuOrder) changed.push('menu_order');
+  const nests = context.hierarchical !== false;
+  if (nests && !context.isRoot && remote.menuOrder !== rendered.menuOrder) changed.push('menu_order');
   if ((remote.template ?? '') !== context.template) changed.push('template');
-  if (remote.parent !== context.parentId) changed.push('parent');
+  if (nests && remote.parent !== context.parentId) changed.push('parent');
   if (remote.slug !== context.slug) changed.push('slug');
 
   // Only where both ends have them: a page has no tags and a site with no

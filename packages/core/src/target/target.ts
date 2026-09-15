@@ -17,12 +17,20 @@ export interface TargetCapabilities {
   /**
    * The tree's own root is published as a page.
    *
-   * False where the target gives the tree a namespace of its own -- a custom
-   * post type, whose archive is the index -- so there is nothing at the root
-   * for pterodocs to write, and everything it does write hangs from the
-   * collection rather than from a page.
+   * False where the target has somewhere of its own for this tree -- an
+   * archive it generates -- so there is nothing at the root for pterodocs to
+   * write and everything it does write hangs from the collection instead.
    */
   publishesTreeRoot: boolean;
+  /**
+   * `hrefFor` alone gives a page its final URL.
+   *
+   * False where the target decides: a WordPress post's permalink comes from
+   * the site's own settings and cannot be worked out from the path. The
+   * reconciler then uses the URL the target reports when a page is ensured,
+   * which is why ids have to exist before bodies are rendered.
+   */
+  predictableUrls: boolean;
   /** Pages nest; a flat target gets its whole path as one name. */
   supportsHierarchy: boolean;
   /** There is a separate summary field. */
@@ -139,6 +147,13 @@ export interface EnsureResult {
   id: number | null;
   created: boolean;
   warnings: string[];
+  /**
+   * Where the page ended up, when the target decides that rather than the path.
+   *
+   * Only meaningful where `predictableUrls` is false; the reconciler links to
+   * this instead of to what `hrefFor` computed.
+   */
+  link?: string | undefined;
 }
 
 /** An open connection to a target. */

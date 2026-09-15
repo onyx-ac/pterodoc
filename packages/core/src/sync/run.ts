@@ -136,6 +136,26 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
       }
     }
 
+    // A post's byline is the target's to render, from the account that wrote
+    // it -- so saying who a document names would either duplicate what the
+    // site already shows or contradict it. Mapping the name to a user is the
+    // only honest alternative, and that means creating or matching accounts,
+    // which is not something a publish should do on its own. So it is said
+    // once, and left.
+    const named = new Set<string>();
+    for (const entry of prepared) {
+      for (const author of entry.node.doc?.authors ?? []) named.add(author.name);
+    }
+    if (named.size > 0) {
+      issues.add({
+        code: 'authors-not-mapped',
+        severity: 'info',
+        message:
+          `${[...named].sort().join(', ')} ${named.size === 1 ? 'is named as an author' : 'are named as authors'} in the source, but posts are attributed to the account running the sync. ` +
+          'Mapping a name to a user would mean creating or matching accounts, which a publish does not do.',
+      });
+    }
+
     // Built at the end of the primary locale's turn, which is the first time
     // every page it will describe has been rendered — and the last time this
     // locale's session is still open to write it with.
@@ -358,8 +378,18 @@ async function syncVersion(input: SyncVersionInput): Promise<{
   });
 
   const context = { versionName: version.name, locale };
+
+  // Where the target decides a page's URL rather than the path deciding it --
+  // a WordPress post's permalink comes from the site's own settings -- the
+  // only place it can be learned is from the target, when the page is ensured.
+  // Only consulted where the target says the path is not enough. A target
+  // that can work a URL out is the authority on it -- reading one back from a
+  // page that already exists would let a bad stored link outlive the fix.
+  const links = new Map<string, string>();
+  const reportsUrls = target?.capabilities.predictableUrls === false;
   const href = (treePath: string): string =>
-    target ? target.hrefFor(treePath, context) : `/${treePath}`;
+    (reportsUrls ? links.get(treePath) : undefined) ??
+    (target ? target.hrefFor(treePath, context) : `/${treePath}`);
 
   // Phase 0 and 1: make sure the pages exist, so their ids are known.
   const ids = new Map<string, number | null>();
@@ -423,6 +453,7 @@ async function syncVersion(input: SyncVersionInput): Promise<{
       issues.add({ code: 'target-warning', severity: 'warning', message: warning, path: node.path });
     }
     ids.set(node.path, result.id);
+    if (result.link) links.set(node.path, result.link);
     if (result.created) {
       created.add(node.path);
       actions.push({
