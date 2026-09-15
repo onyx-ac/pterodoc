@@ -495,6 +495,7 @@ async function withNavbar() {
       { label: 'Elsewhere', href: '/docs/api/reference', position: 'left' },
       { label: 'Workbench', href: 'pathname:///app/index.html', position: 'right' },
       { label: 'Repo', href: 'https://example.test/repo', position: 'right' },
+      { label: 'Upstream', href: 'https://other.example/docs', position: 'right' },
     ],
   };
   return t;
@@ -1077,5 +1078,48 @@ test('a docs run does not report links it was configured to send away', async ()
   const { plan } = await t.run();
 
   assert.equal(plan.issues.some((issue) => issue.code === 'link-left-the-site'), false);
+  await t.cleanup();
+});
+
+test('a header entry that leaves the site opens in a new tab', async () => {
+  // Docusaurus does this for an external navbar entry, so the published copy
+  // of the same menu should not behave differently.
+  const t = await withNavbar();
+  await t.run();
+
+  assert.match(
+    contentOf(t.fake, 'docs'),
+    /<a href="https:\/\/other\.example\/docs" target="_blank" rel="noopener noreferrer">Upstream<\/a>/,
+  );
+});
+
+test('a header entry on this site stays in the tab, absolute or not', async () => {
+  // "Names a host" is not the question -- whose host it names is. The target
+  // site's own URL is as much this site as a path is.
+  const t = await withNavbar();
+  await t.run();
+  const content = contentOf(t.fake, 'docs');
+
+  for (const label of ['Published', 'Repo']) {
+    const at = content.indexOf(`>${label}<`);
+    assert.ok(at > 0, `${label} is missing`);
+    assert.equal(
+      content.slice(at - 220, at).includes('target="_blank"'),
+      false,
+      `${label}: ${content.slice(at - 220, at)}`,
+    );
+  }
+});
+
+test('an absolute link back to the same site is not treated as leaving it', async () => {
+  // The blog archive is resolved to an absolute URL on the target. It is the
+  // same site, so opening it in a new tab would be wrong.
+  const t = await docsBesideBlog();
+  await t.run();
+
+  const content = contentOf(t.fake, 'docs');
+  const at = content.indexOf('>Releases<');
+  assert.ok(at > 0, 'the entry is missing');
+  assert.equal(content.slice(at - 220, at).includes('target="_blank"'), false, content.slice(at - 220, at));
   await t.cleanup();
 });

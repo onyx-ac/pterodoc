@@ -457,3 +457,40 @@ test('the header matches the alignment of the documentation below it', () => {
   assert.ok(composeWithHeader().includes('class="alignfull x-docs-header"'), 'no alignment class');
   assert.ok(composeWithHeader({ align: '' }).includes('class="x-docs-header"'), 'aligned when it should not be');
 });
+
+test('the header carries the design tokens, not only the columns do', () => {
+  // The header is a sibling of the columns block, so it is outside the element
+  // the tokens were declared on -- and `var(--x-gutter)` undefined makes the
+  // whole declaration reading it invalid, which took the sheet's padding,
+  // background and border with it.
+  const css = stylesheetFor(createTheme({ classPrefix: 'x' }));
+  const tokens = css.split(String.fromCharCode(10)).find((line) => line.includes('--x-gutter:'));
+
+  assert.ok(tokens, 'nothing declares the tokens');
+  assert.ok(tokens!.startsWith(':where(.x-docs,.x-docs-header){'), tokens);
+});
+
+test('the header sheet is padded from a token it can actually see', () => {
+  const css = stylesheetFor(createTheme({ classPrefix: 'x' }));
+  const lines = css.split(String.fromCharCode(10));
+
+  const sheet = lines.find((line) => line.includes('.x-docs-header-nav{position:fixed'));
+  assert.ok(sheet?.includes('padding:'), sheet);
+
+  // Every token the sheet reads has to be declared somewhere that contains it.
+  const scope = lines.find((line) => line.includes('--x-gutter:'))!;
+  for (const token of sheet!.match(/--x-[a-z-]+/g) ?? []) {
+    assert.ok(scope.includes(`${token}:`), `${token} is read by the sheet but declared nowhere it reaches`);
+  }
+});
+
+test('the control that opens the header is named without printing a word', () => {
+  // One hamburger in a header that already says what site this is. A caption
+  // beside it only repeats the icon -- but the icon is aria-hidden, so the
+  // name has to come from somewhere.
+  const markup = markupOf(composeWithHeader());
+
+  assert.equal(markup.includes('>Site menu<'), false, 'the caption is still printed');
+  assert.ok(markup.includes('aria-label="Site menu"'), 'the control has no accessible name');
+  assert.ok(markup.includes('title="Site menu"'), 'no tooltip');
+});

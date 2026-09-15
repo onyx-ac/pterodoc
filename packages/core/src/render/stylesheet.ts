@@ -29,7 +29,7 @@ import type { Theme } from './theme';
  * is a kilobyte times the size of the documentation.
  */
 const TEMPLATE = `
-:where(.{p}-docs){--{p}-gutter:clamp(1rem,4vw,2rem);--{p}-measure:var(--wp--style--global--content-size,46rem);--{p}-rule:color-mix(in oklab,currentColor 14%,transparent);--{p}-muted:color-mix(in oklab,currentColor 62%,transparent);--{p}-surface:color-mix(in oklab,currentColor 5%,transparent);--{p}-surface-solid:var(--wp--preset--color--base,Canvas);--{p}-radius:8px;--{p}-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:where(.{p}-docs,.{p}-docs-header){--{p}-gutter:clamp(1rem,4vw,2rem);--{p}-measure:var(--wp--style--global--content-size,46rem);--{p}-rule:color-mix(in oklab,currentColor 14%,transparent);--{p}-muted:color-mix(in oklab,currentColor 62%,transparent);--{p}-surface:color-mix(in oklab,currentColor 5%,transparent);--{p}-surface-solid:var(--wp--preset--color--base,Canvas);--{p}-radius:8px;--{p}-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .wp-block-columns.{p}-docs{display:grid;grid-template-columns:minmax(0,min(var(--{p}-nav-width,25%),20rem)) minmax(0,1fr);gap:clamp(1.5rem,4vw,3rem);align-items:start;padding-inline:var(--wp--style--root--padding-left,var(--{p}-gutter)) var(--wp--style--root--padding-right,var(--{p}-gutter))}
 /* The block theme's own main container, when it is holding documentation.
 

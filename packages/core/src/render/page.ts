@@ -80,6 +80,13 @@ export interface HeaderLink {
   label: string;
   /** Where it points; empty for an entry that only groups others. */
   href: string;
+  /**
+   * The destination is not on this site.
+   *
+   * Decided by whoever resolved the link, which is the only place the site's
+   * own origin is known -- the renderer sees a string and could only guess.
+   */
+  external?: boolean | undefined;
   /** Entries below it. */
   items?: HeaderLink[] | undefined;
 }
@@ -319,8 +326,13 @@ function renderDocsBar(input: ComposePageInput): string {
 /** One menu entry, and anything nested under it. */
 function renderHeaderLink(item: HeaderLink, theme: Theme): string {
   const label = escapeText(item.label);
+  // Docusaurus opens an external navbar entry in a new tab, so the published
+  // header does too -- the same menu should not behave differently depending
+  // on which copy of it you are reading. `noopener` because a new tab would
+  // otherwise get a handle on this one.
+  const away = item.external ? ' target="_blank" rel="noopener noreferrer"' : '';
   const self = item.href
-    ? `<a href="${escapeText(item.href)}">${label}</a>`
+    ? `<a href="${escapeText(item.href)}"${away}>${label}</a>`
     : `<span>${label}</span>`;
 
   if (!item.items || item.items.length === 0) return `<li>${self}</li>`;
@@ -356,6 +368,11 @@ function renderHeader(input: ComposePageInput): string {
       .join('');
 
   const id = theme.cls('docs-header-toggle');
+  // Named by attribute rather than by a visible word. The control is one
+  // hamburger in a header that already says what site this is, so a caption
+  // beside it only repeats the icon; `aria-label` is not optional, though --
+  // the icon is `aria-hidden`, so without it the control has no name at all.
+  const toggle = escapeText(theme.text('headerToggle'));
   const title = header.href
     ? `<a href="${escapeText(header.href)}">${escapeText(header.title)}</a>`
     : escapeText(header.title);
@@ -365,9 +382,8 @@ function renderHeader(input: ComposePageInput): string {
     `<div class="${align}${theme.cls('docs-header')}">` +
     `<span class="${theme.cls('docs-header-title')}">${title}</span>` +
     `<input type="checkbox" id="${id}" class="${theme.cls('docs-header-check')}">` +
-    `<label class="${theme.cls('docs-header-label')}" for="${id}">` +
+    `<label class="${theme.cls('docs-header-label')}" for="${id}" title="${toggle}" aria-label="${toggle}">` +
     `<span class="${theme.cls('docs-header-icon')}" aria-hidden="true"></span>` +
-    `<span class="${theme.cls('docs-header-text')}">${escapeText(theme.text('headerToggle'))}</span>` +
     `</label>` +
     `<label class="${theme.cls('docs-header-scrim')}" for="${id}" aria-hidden="true"></label>` +
     `<nav class="${theme.cls('docs-header-nav')}">` +

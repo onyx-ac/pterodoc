@@ -715,11 +715,36 @@ function headerFor(
     return config.unpublishedLinks === 'drop' ? '' : `${siteUrl}${target}`;
   };
 
-  const convert = (item: NavbarItem): HeaderLink => ({
-    label: item.label,
-    href: retarget(item.href),
-    ...(item.items ? { items: item.items.map(convert) } : {}),
-  });
+  // The site's own origin, which is the only thing that makes "external"
+  // answerable. A link this run resolved to a page is site-relative and never
+  // external; one that kept an absolute URL may or may not be.
+  let origin = '';
+  try {
+    origin = new URL(config.targetUrl).origin;
+  } catch {
+    origin = '';
+  }
+
+  const leavesTheSite = (link: string): boolean => {
+    if (!link) return false;
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(link) && !link.startsWith('//')) return false;
+    try {
+      return new URL(link, origin || undefined).origin !== origin;
+    } catch {
+      // A scheme with no origin at all -- `mailto:`, `tel:` -- is not here.
+      return true;
+    }
+  };
+
+  const convert = (item: NavbarItem): HeaderLink => {
+    const href = retarget(item.href);
+    return {
+      label: item.label,
+      href,
+      ...(leavesTheSite(href) ? { external: true } : {}),
+      ...(item.items ? { items: item.items.map(convert) } : {}),
+    };
+  };
 
   return {
     title: navbar.title,
