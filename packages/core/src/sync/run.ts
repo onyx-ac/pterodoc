@@ -112,6 +112,10 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
     let rootId: number | null = null;
 
     for (const instance of model.instances) {
+      // One run publishes one tree. A blog and its documentation are both
+      // instances of the same model, so the run says which it came for.
+      if ((instance.kind ?? 'docs') !== config.publish) continue;
+
       for (const version of instance.versions) {
         const result = await syncVersion({
           config,

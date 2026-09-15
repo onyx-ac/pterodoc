@@ -72,9 +72,14 @@ function targetFor(config: ResolvedConfig, fake: FakeWp) {
 }
 
 /** Set up a run: a site on disk, a fake WordPress, and somewhere to write. */
-async function setup(overrides: Partial<ResolvedConfig> = {}, fake = createFakeWp()) {
+async function setup(
+  overrides: Partial<ResolvedConfig> = {},
+  fake = createFakeWp(),
+  mutate: (model: SiteModel, dir: string) => Promise<void> | void = () => {},
+) {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pterodocs-out-'));
   const { model, dir } = await siteOnDisk();
+  await mutate(model, dir);
   const config = configFor(outDir, overrides);
   const reader = createMemoryReader(model);
   return {
@@ -639,5 +644,89 @@ test('a post nothing accounts for is pruned without a root to anchor on', async 
   const { plan } = await t.run();
   assert.equal(plan.summary['prune'], 1);
   assert.equal(t.fake.pages.find((page) => page.id === 5000)!.status, 'trash');
+  await t.cleanup();
+});
+
+/**
+ * A model holding a blog beside its documentation, which is what Docusaurus
+ * hands back for a site that has both.
+ */
+async function withBlog(overrides: Partial<ResolvedConfig> = {}, fake = createFakeWp()) {
+  return setup(overrides, fake, async (model, dir) => {
+    const file = path.join(dir, 'blog', '2026-01-01-v2.md');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, `What changed in v2.${String.fromCharCode(10)}`);
+
+    model.instances.push({
+      id: 'blog',
+      kind: 'blog',
+      routeBasePath: 'blog',
+      contentDirName: 'blog',
+      admonitionKeywords: [],
+      breadcrumbs: false,
+      versions: [
+        {
+          name: 'current',
+          label: 'Release notes',
+          isLast: true,
+          pathPrefix: '/blog',
+          contentPath: path.join(dir, 'blog'),
+          contentPathLocalized: path.join(dir, 'blog'),
+          banner: null,
+          noIndex: false,
+          draftCount: 0,
+          sidebars: {
+            blog: [{ type: 'doc', id: 'v2', label: 'v2' }],
+          },
+          docs: [
+            {
+              id: 'v2',
+              versionName: 'current',
+              title: 'v2',
+              description: 'What changed in v2.',
+              sourceAliased: '@site/blog/2026-01-01-v2.md',
+              sourceAbsolutePath: file,
+              sourceRelativePath: 'blog/2026-01-01-v2.md',
+              sourceDirName: '.',
+              slug: '/v2',
+              permalink: '/blog/v2',
+              treePath: 'v2',
+              draft: false,
+              unlisted: false,
+              frontMatter: {},
+              sidebarName: 'blog',
+              tags: [],
+              format: 'md',
+            },
+          ],
+        },
+      ],
+    });
+  });
+}
+
+test('a docs run leaves the blog where it found it', async () => {
+  // Both are instances of the same model. Without the filter a `sidebars: all`
+  // run picks the blog's sidebar up and publishes release notes as pages.
+  const t = await withBlog({ sidebars: 'all' });
+  await t.run();
+
+  assert.equal(
+    t.fake.pages.some((page) => page.slug === 'v2'),
+    false,
+    'a release note was published as a page',
+  );
+  await t.cleanup();
+});
+
+test('a blog run publishes the blog and nothing else', async () => {
+  const t = await withBlog({ publish: 'blog', sidebars: ['blog'] });
+  await t.run();
+
+  const published = t.fake.pages.map((page) => page.slug);
+  assert.ok(published.includes('v2'), published.join(', '));
+  for (const slug of ['alpha', 'first', 'beta', 'child']) {
+    assert.equal(published.includes(slug), false, `${slug} came along`);
+  }
   await t.cleanup();
 });

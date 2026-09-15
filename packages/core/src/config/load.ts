@@ -68,6 +68,15 @@ export interface ResolvedConfig {
 
   instances: string[] | 'all';
   sidebars: string[] | 'all';
+  /**
+   * Which kind of instance this run publishes.
+   *
+   * A site model holds its documentation and its blog side by side, and a run
+   * publishes one tree to one place. Without this a docs run whose `sidebars`
+   * is `all` would pick the blog's sidebar up by accident, and publish release
+   * notes into the documentation.
+   */
+  publish: 'docs' | 'blog';
   versions: string[] | 'all' | 'last';
   locales: string[] | 'all' | 'default';
   includeDrafts: boolean;
@@ -341,6 +350,7 @@ export function resolveConfig(input: {
 
     instances: flags.instance && flags.instance.length > 0 ? flags.instance : (site.instances ?? 'all'),
     sidebars: site.sidebars ?? 'all',
+    publish: 'docs',
     versions,
     locales,
     includeDrafts: site.includeDrafts === true,
