@@ -18,6 +18,19 @@ export const PAGE_FIELDS = 'id,parent,slug,status,link,title,menu_order,template
 /** Those, plus the content only fetched when a page is about to be compared. */
 export const FULL_PAGE_FIELDS = `${PAGE_FIELDS},content,excerpt,meta`;
 
+/**
+ * The same, naming a taxonomy as well.
+ *
+ * A post's terms live under a field named after the taxonomy, so the list can
+ * only be built once that is known -- which is why these are functions and the
+ * two above are not.
+ *
+ * @param fields One of the two lists above.
+ * @param taxonomy The taxonomy's name, or empty for none.
+ */
+export const withTaxonomy = (fields: string, taxonomy: string): string =>
+  taxonomy ? `${fields},${taxonomy}` : fields;
+
 /** How hard to try again when WordPress is busy. */
 export interface RetryPolicy {
   /** Extra attempts after the first. */

@@ -65,6 +65,8 @@ export interface RemotePage {
   meta?: Record<string, unknown> | undefined;
   /** When the target believes it was published, as an ISO instant in UTC. */
   date?: string | undefined;
+  /** Taxonomy term ids, when the target holds any for this page. */
+  tags?: number[] | undefined;
 }
 
 /** A page as pterodocs would publish it. */
@@ -90,6 +92,13 @@ export interface RenderedPage {
    * that reads it is guarded: a page with no date must never diff on one.
    */
   date?: string | undefined;
+  /**
+   * Tags, as the document writes them.
+   *
+   * Labels, not ids: what a term is called numerically is the target's own
+   * business, and the renderer has no way to know it.
+   */
+  tags?: string[] | undefined;
   /** Source file, for messages. */
   file?: string | undefined;
   /** Version this page belongs to. */

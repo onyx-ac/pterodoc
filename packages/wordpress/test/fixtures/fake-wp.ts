@@ -20,6 +20,15 @@ export interface FakePage {
   template: string;
   meta: Record<string, unknown>;
   date_gmt: string;
+  /** Term ids, under a field named after the taxonomy. */
+  [taxonomy: string]: unknown;
+}
+
+/** A taxonomy term as the fake holds it. */
+export interface FakeTerm {
+  id: number;
+  name: string;
+  slug: string;
 }
 
 /** A media item as the fake holds it. */
@@ -56,6 +65,8 @@ export interface FakeWp {
   restBase: string;
   pages: FakePage[];
   media: FakeMedia[];
+  /** Terms of the configured taxonomy, if one was named. */
+  terms: FakeTerm[];
   calls: FakeCall[];
   /** Pages that were written to, by id, for asserting what was left alone. */
   writes: number[];
@@ -92,9 +103,14 @@ export function createFakeWp(
     failures?: Map<string, FakeFailure[]>;
     /** The collection pages are served from, for a custom post type. */
     restBase?: string;
+    /** A taxonomy to serve, and the terms it starts with. */
+    taxonomy?: string;
+    terms?: FakeTerm[];
   } = {},
 ): FakeWp {
   const restBase = options.restBase ?? 'pages';
+  const taxonomy = options.taxonomy ?? '';
+  const terms: FakeTerm[] = [...(options.terms ?? [])];
   const collection = `/${restBase}`;
   const singular = new RegExp(`^/${restBase}/(\\d+)$`);
   let nextId = 1000;
@@ -158,6 +174,22 @@ export function createFakeWp(
     const pageId = singular.exec(path);
     const mediaId = /^\/media\/(\d+)$/.exec(path);
 
+    if (taxonomy && path === `/${taxonomy}`) {
+      if (routedAs === 'GET') {
+        return json(terms, { 'x-wp-totalpages': '1', 'x-wp-total': String(terms.length) });
+      }
+      if (routedAs === 'POST') {
+        const name = String(body['name'] ?? '');
+        const created: FakeTerm = {
+          id: (nextId += 1),
+          name,
+          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        };
+        terms.push(created);
+        return json(created);
+      }
+    }
+
     if (routedAs === 'GET' && path === collection) {
       let found = pages.filter((page) => page.status !== 'trash' || query['status'] === 'any');
       if (query['parent'] !== undefined) found = found.filter((p) => p.parent === Number(query['parent']));
@@ -192,6 +224,7 @@ export function createFakeWp(
         menu_order: Number(body['menu_order'] ?? 0),
         template: String(body['template'] ?? ''),
         meta: (body['meta'] as Record<string, unknown>) ?? {},
+        ...(taxonomy ? { [taxonomy]: (body[taxonomy] as number[]) ?? [] } : {}),
       });
       pages.push(created);
       return json(created);
@@ -216,6 +249,7 @@ export function createFakeWp(
       if (body['meta'] !== undefined) {
         page.meta = { ...page.meta, ...(body['meta'] as Record<string, unknown>) };
       }
+      if (taxonomy && body[taxonomy] !== undefined) page[taxonomy] = body[taxonomy] as number[];
       return json(page);
     }
 
@@ -262,5 +296,5 @@ export function createFakeWp(
     });
   };
 
-  return { fetch, restBase, pages, media, calls, writes };
+  return { fetch, restBase, pages, media, terms, calls, writes };
 }

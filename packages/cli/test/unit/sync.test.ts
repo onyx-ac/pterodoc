@@ -61,6 +61,7 @@ function targetFor(config: ResolvedConfig, fake: FakeWp) {
       policy: { rootSegments: config.rootSegments, baseSegments: config.baseSegments },
       restBase: config.restBase,
       ownership: config.ownership,
+      taxonomy: config.taxonomy,
       status: config.status,
       template: config.template,
       lang: config.lang,
@@ -682,7 +683,10 @@ async function withBlog(overrides: Partial<ResolvedConfig> = {}, fake = createFa
               frontMatter: {},
               sidebarName: 'blog',
               date: '2026-01-01T09:30:00.482Z',
-              tags: [],
+              tags: [
+                { label: 'release', permalink: '/blog/tags/release' },
+                { label: 'client', permalink: '/blog/tags/client' },
+              ],
               format: 'md',
             },
           ],
@@ -757,8 +761,11 @@ test('a post dated ahead of now is scheduled, said so, and not fought over', asy
  * A full `--blog` run: the config profile selects everything, rather than the
  * test setting the seven scalars it happens to know about.
  */
-async function blogRun() {
-  const fake = createFakeWp({ restBase: 'pterodocs_release' });
+async function blogRun(taxonomy = '') {
+  const fake = createFakeWp({
+    restBase: 'pterodocs_release',
+    ...(taxonomy ? { taxonomy, terms: [{ id: 40, name: 'release', slug: 'release' }] } : {}),
+  });
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pterodocs-out-'));
   // No `outDir` of its own: the profile decides it, and that is the thing
   // under test in the second case below.
@@ -769,7 +776,7 @@ async function blogRun() {
       target: { root: '/products/docstack', base: 'docs' },
       render: { classPrefix: 'x' },
       media: { upload: false },
-      blog: { base: '/products/docstack/releases' },
+      blog: { base: '/products/docstack/releases', ...(taxonomy ? { taxonomy } : {}) },
     },
     fileDir: outDir,
   });
@@ -809,5 +816,46 @@ test('a --blog run writes where a docs run would not overwrite it', async () => 
 
   assert.equal(path.basename(t.config.outDir), 'blog', t.config.outDir);
   assert.ok((await fs.readdir(t.config.outDir)).includes('pages'));
+  await t.cleanup();
+});
+
+test('tags become real terms, existing ones reused and new ones created', async () => {
+  // WordPress takes term ids over REST, not names, so a tag can only be
+  // written once the site has a term for it.
+  const t = await blogRun('pterodocs_release_tag');
+  await t.run();
+
+  const release = t.fake.terms.find((term) => term.name === 'release')!;
+  const client = t.fake.terms.find((term) => term.name === 'client');
+  assert.equal(release.id, 40, 'the existing term was duplicated rather than reused');
+  assert.ok(client, 'the missing term was never created');
+
+  const post = t.fake.pages.find((page) => page.slug === 'v2')!;
+  assert.deepEqual(
+    (post['pterodocs_release_tag'] as number[]).slice().sort((a, b) => a - b),
+    [release.id, client!.id].sort((a, b) => a - b),
+  );
+  await t.cleanup();
+});
+
+test('tags do not churn on a second run', async () => {
+  // Terms come back in whatever order WordPress likes, and as ids where the
+  // document wrote names -- either would differ forever if compared naively.
+  const t = await blogRun('pterodocs_release_tag');
+  await t.run();
+  const created = t.fake.terms.length;
+
+  const { plan } = await t.run();
+  assert.equal(plan.summary['update'], undefined, JSON.stringify(plan.summary));
+  assert.equal(t.fake.terms.length, created, 'it created the terms all over again');
+  await t.cleanup();
+});
+
+test('a run with no taxonomy configured publishes without tags, not without posts', async () => {
+  const t = await blogRun();
+  await t.run();
+
+  assert.ok(t.fake.pages.find((page) => page.slug === 'v2'), 'the post was not published');
+  assert.equal(t.fake.calls.some((call) => call.path.includes('tag')), false, 'it asked for a taxonomy');
   await t.cleanup();
 });

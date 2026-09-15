@@ -728,6 +728,7 @@ function renderPageFor(input: {
       menuOrder: config.menuOrder === 'none' ? 0 : node.menuOrder,
       meta,
       ...(doc?.date ? { date: doc.date } : {}),
+      ...(doc?.tags?.length ? { tags: doc.tags.map((tag) => tag.label) } : {}),
       file: doc?.sourceRelativePath,
       versionName: node.versionName,
     },

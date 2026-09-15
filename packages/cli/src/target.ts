@@ -29,6 +29,7 @@ export function resolveTarget(config: ResolvedConfig): Target {
     },
     restBase: config.restBase,
     ownership: config.ownership,
+    taxonomy: config.taxonomy,
     status: config.status,
     template: config.template,
     lang: config.lang,

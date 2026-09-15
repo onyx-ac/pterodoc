@@ -19,6 +19,7 @@ import type {
 import { TargetError, titleCase } from '@pterodocs/core/util';
 import { DEFAULT_RETRY, WpClient, type RetryPolicy } from './client';
 import { loadMediaIndex, uploadMedia } from './media';
+import { loadTermIndex, type TermIndex } from './terms';
 import {
   computePrune,
   createPostsApi,
@@ -86,6 +87,12 @@ export interface WordpressTargetOptions {
    * rewrite base is the post type's, not a page's.
    */
   ownership: 'tree' | 'namespace';
+  /**
+   * Taxonomy carrying a post's tags, or empty for none.
+   *
+   * Its REST base, which the plugin registers as the taxonomy's own name.
+   */
+  taxonomy: string;
   /** Send DELETE as POST with an override header. */
   methodOverride: boolean;
   /** Retry policy. */
@@ -144,13 +151,20 @@ export function createWordpressTarget(
 
     async open(context): Promise<TargetSession> {
       const client = makeClient(context.locale);
-      const posts = createPostsApi(client, options.restBase);
+      const posts = createPostsApi(client, options.restBase, options.taxonomy);
       const dryRun = context.dryRun;
       let index: RemotePage[] | undefined;
+      let terms: TermIndex | undefined;
 
       return {
         async loadIndex(): Promise<RemotePage[]> {
           index ??= await posts.fetchIndex();
+          // Read here and not where it is wanted: `diffPage` is synchronous,
+          // so by the time a post's tags are compared there is no opportunity
+          // left to ask what each label is called numerically.
+          if (options.taxonomy && !terms) {
+            terms = await loadTermIndex(client, options.taxonomy, dryRun);
+          }
           return index;
         },
 
@@ -235,12 +249,21 @@ export function createWordpressTarget(
         },
 
         diffPage(remote: RemotePage, rendered: RenderedPage, parentId: number): string[] {
+          // Only the tags this site already has a term for. One it does not is
+          // a difference by definition -- it cannot be on the post yet -- and
+          // `writePage` is where it gets created.
+          const known = rendered.tags && terms
+            ? rendered.tags.map((label) => terms!.idFor(label)).filter((id): id is number => id !== undefined)
+            : undefined;
+          const tags = known && rendered.tags && known.length === rendered.tags.length ? known : undefined;
+
           return diffPage(remote, rendered, {
             parentId,
             status: options.status,
             template: options.template,
             isRoot: rendered.path === '',
             slug: slugFor(rendered),
+            ...(tags ? { tags } : {}),
           });
         },
 
@@ -264,6 +287,12 @@ export function createWordpressTarget(
           // a site that is strict about unregistered keys.
           if (namespaced) meta[OWNERSHIP_META] = OWNERSHIP_VALUE;
           if (Object.keys(meta).length > 0) body.meta = meta;
+
+          if (page.tags && terms) {
+            const { ids, warnings: refused } = await terms.ensure(page.tags);
+            warnings.push(...refused);
+            body[options.taxonomy] = ids;
+          }
 
           if (page.date) {
             const when = toWpDate(page.date);

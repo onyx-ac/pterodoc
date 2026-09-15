@@ -12,7 +12,7 @@
 
 import { TargetError } from '@pterodocs/core/util';
 import type { RemotePage, RenderedPage } from '@pterodocs/core/target';
-import { FULL_PAGE_FIELDS, PAGE_FIELDS, type WpClient } from './client';
+import { FULL_PAGE_FIELDS, PAGE_FIELDS, withTaxonomy, type WpClient } from './client';
 
 /** WordPress's own post shape, narrowed to what is read. */
 interface WpPage {
@@ -28,6 +28,8 @@ interface WpPage {
   template: string;
   meta?: Record<string, unknown>;
   date_gmt?: string | null;
+  /** Term ids, under a field named after the taxonomy. */
+  [taxonomy: string]: unknown;
 }
 
 /**
@@ -88,6 +90,8 @@ export interface PageInput {
   meta?: Record<string, unknown>;
   /** Publication instant in UTC. Never `date`, which is the site's timezone. */
   date_gmt?: string;
+  /** Term ids, under a field named after the taxonomy. */
+  [taxonomy: string]: unknown;
 }
 
 /** The six things a sync does to a post type, bound to one REST base. */
@@ -125,9 +129,23 @@ export interface PostsApi {
  * @param restBase The collection, without a slash: `pages`, or a post type's
  *   own `rest_base`.
  */
-export function createPostsApi(client: WpClient, restBase: string): PostsApi {
+export function createPostsApi(client: WpClient, restBase: string, taxonomy = ''): PostsApi {
   const collection = `/${restBase}`;
   const one = (id: number): string => `${collection}/${id}`;
+  const listFields = withTaxonomy(PAGE_FIELDS, taxonomy);
+  const fullFields = withTaxonomy(FULL_PAGE_FIELDS, taxonomy);
+
+  /** A post's own terms, when a taxonomy was named. */
+  const tagsOf = (page: WpPage): number[] | undefined => {
+    if (!taxonomy) return undefined;
+    const value = page[taxonomy];
+    return Array.isArray(value) ? value.map(Number) : [];
+  };
+
+  const convert = (page: WpPage): RemotePage => {
+    const tags = tagsOf(page);
+    return { ...toRemotePage(page), ...(tags ? { tags } : {}) };
+  };
 
   return {
     restBase,
@@ -136,16 +154,16 @@ export function createPostsApi(client: WpClient, restBase: string): PostsApi {
       const pages = await client.listAll<WpPage>(collection, {
         status: 'any',
         context: 'edit',
-        _fields: PAGE_FIELDS,
+        _fields: listFields,
       });
-      return pages.map(toRemotePage);
+      return pages.map(convert);
     },
 
     async fetchOne(id: number): Promise<RemotePage> {
       const { data } = await client.request<WpPage>('GET', one(id), {
-        query: { context: 'edit', _fields: FULL_PAGE_FIELDS },
+        query: { context: 'edit', _fields: fullFields },
       });
-      return toRemotePage(data);
+      return convert(data);
     },
 
     async find(parent, slug, index, log = () => {}): Promise<RemotePage | undefined> {
@@ -156,9 +174,9 @@ export function createPostsApi(client: WpClient, restBase: string): PostsApi {
         candidates = index.filter((page) => page.parent === parent && page.slug === slug);
       } else {
         const { data } = await client.request<WpPage[]>('GET', collection, {
-          query: { parent, slug, status: 'any', context: 'edit', per_page: 100, _fields: PAGE_FIELDS },
+          query: { parent, slug, status: 'any', context: 'edit', per_page: 100, _fields: listFields },
         });
-        candidates = (Array.isArray(data) ? data : []).map(toRemotePage);
+        candidates = (Array.isArray(data) ? data : []).map(convert);
       }
       if (candidates.length > 1) {
         log(`${candidates.length} pages share parent ${parent} and slug "${slug}"; using id ${candidates[0]!.id}.`);
@@ -174,12 +192,12 @@ export function createPostsApi(client: WpClient, restBase: string): PostsApi {
           { status: 200, method: 'POST', url: collection },
         );
       }
-      return toRemotePage(data);
+      return convert(data);
     },
 
     async update(id: number, input: PageInput): Promise<RemotePage> {
       const { data } = await client.request<WpPage>('POST', one(id), { body: input });
-      return toRemotePage(data);
+      return convert(data);
     },
 
     async trash(id: number): Promise<void> {
@@ -210,6 +228,14 @@ export function diffPage(
     slug: string;
     /** Now, so a scheduled post can be recognised. Defaults to the clock. */
     now?: number;
+    /**
+     * The rendered page's tags as term ids, when this site has a taxonomy.
+     *
+     * Resolved by the caller, because the labels a document writes mean nothing
+     * to WordPress and turning them into ids is a request -- which this cannot
+     * make, being synchronous by design.
+     */
+    tags?: number[];
   },
 ): string[] {
   const changed: string[] = [];
@@ -235,6 +261,14 @@ export function diffPage(
   if ((remote.template ?? '') !== context.template) changed.push('template');
   if (remote.parent !== context.parentId) changed.push('parent');
   if (remote.slug !== context.slug) changed.push('slug');
+
+  // Only where both ends have them: a page has no tags and a site with no
+  // taxonomy returns no field, and neither is a difference.
+  if (context.tags && remote.tags) {
+    const want = [...context.tags].sort((a, b) => a - b).join(',');
+    const have = [...remote.tags].sort((a, b) => a - b).join(',');
+    if (want !== have) changed.push('tags');
+  }
 
   // Metadata is only compared where the site actually exposes the field, so a
   // site without the SEO plugin does not report a difference on every run.
