@@ -540,6 +540,37 @@ test('a pathname:// entry loses the prefix Docusaurus reads', async () => {
   await t.cleanup();
 });
 
+test('a pathname:// entry on a project site keeps the site’s base URL', async () => {
+  // Docusaurus renders `pathname:///app/index.html` on a site served from
+  // /docstack/ as href="/docstack/app/index.html" -- opting out of the router
+  // is not opting out of the base URL. Dropping it leaves the link one segment
+  // short of the file, which 404s.
+  const t = await withNavbar();
+  t.model.baseUrl = '/docstack/';
+  await t.run();
+
+  const content = contentOf(t.fake, 'docs');
+  assert.ok(
+    content.includes(`href="${t.model.url}/docstack/app/index.html"`),
+    content.slice(content.indexOf('Workbench') - 200, content.indexOf('Workbench')),
+  );
+});
+
+test('a base URL already on the path is not put there twice', async () => {
+  const t = await withNavbar();
+  t.model.baseUrl = '/docstack/';
+  t.model.navbar!.items.push({
+    label: 'Already based',
+    href: 'pathname:///docstack/app/other.html',
+    position: 'right',
+  });
+  await t.run();
+
+  const content = contentOf(t.fake, 'docs');
+  assert.ok(content.includes(`href="${t.model.url}/docstack/app/other.html"`), 'not resolved');
+  assert.equal(content.includes('/docstack/docstack/'), false, 'the base URL was doubled');
+});
+
 test('an entry that already names a host is left alone', async () => {
   const t = await withNavbar();
   await t.run();

@@ -687,12 +687,22 @@ function headerFor(
     .filter((prefix) => prefix !== '')
     .map((prefix) => `/${prefix.replace(/^\/+|\/+$/g, '')}/`);
 
+  const baseUrl = model.baseUrl.replace(/\/+$/, '');
+
   const retarget = (link: string): string => {
     if (!link) return '';
 
-    // `pathname://` tells Docusaurus not to treat what follows as a route. What
-    // follows is a path on the Docusaurus site, so that is where it points.
-    const target = link.startsWith('pathname://') ? link.slice('pathname://'.length) : link;
+    // `pathname://` tells Docusaurus not to treat what follows as a route. It
+    // does still put the site's base URL in front of it -- the path is on the
+    // Docusaurus site, and on a project site that site does not start at the
+    // domain root. Dropping the prefix and stopping there produced a link one
+    // segment short, which 404s.
+    const raw = link.startsWith('pathname://');
+    const stripped = raw ? link.slice('pathname://'.length) : link;
+    const target =
+      raw && baseUrl && stripped.startsWith('/') && !stripped.startsWith(`${baseUrl}/`)
+        ? `${baseUrl}${stripped}`
+        : stripped;
 
     // Already somewhere else entirely.
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(target) || target.startsWith('//')) return target;
