@@ -74,6 +74,7 @@ export default function pterodocsPlugin(
         siteDir: props.siteDir,
         instances: config.instances,
         blog: config.publish === 'blog',
+        navbar: config.layout.header,
         versions: config.versions,
         includeDrafts: config.includeDrafts,
       });

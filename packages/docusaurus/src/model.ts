@@ -48,6 +48,15 @@ export interface LoadModelOptions {
    * them. `true` takes every blog instance; a list names them.
    */
   blog?: boolean | string[] | undefined;
+  /**
+   * Read the site's navbar, for publishing a header from it.
+   *
+   * On by default. Resolving it means deciding where each entry points, and
+   * saying so when one cannot be resolved -- which is only worth hearing about
+   * for a run that is going to publish a header. A run that is not would
+   * otherwise be told its header omits links it was never going to have.
+   */
+  navbar?: boolean | undefined;
   /** Called with warnings raised while loading. */
   warn?: ((message: string) => void) | undefined;
 }
@@ -507,7 +516,10 @@ export function toSiteModel(site: LoadedSite, options: LoadModelOptions): SiteMo
     siteTitle: String(siteConfig['title'] ?? ''),
     staticDirs: staticDirectories.map((dir) => path.resolve(siteDir, dir)),
     docusaurusVersion: props.siteMetadata.docusaurusVersion,
-    navbar: toNavbar(siteConfig, props.baseUrl, [...instances, ...blogInstances], options.warn ?? ((): void => {})),
+    navbar:
+      options.navbar === false
+        ? { title: '', items: [] }
+        : toNavbar(siteConfig, props.baseUrl, [...instances, ...blogInstances], options.warn ?? ((): void => {})),
     instances: [...instances, ...blogInstances],
   };
 }

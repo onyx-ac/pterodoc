@@ -137,6 +137,8 @@ test('the blog profile folds down into the same shape, with different values', (
   assert.deepEqual(config.sidebars, ['blog']);
   assert.equal(config.layout.nav, 'none');
   assert.equal(config.layout.kind, 'single');
+  assert.equal(config.layout.breadcrumb, false);
+  assert.equal(config.layout.pagination, false);
   assert.equal(config.menuOrder, 'none');
   assert.deepEqual(config.llms, { index: false, full: false, publish: false, title: '', description: '' });
 });
@@ -146,6 +148,32 @@ test('the category is built from the documentation’s own root', () => {
   // The category is the one hierarchy a post has, so that is where the two
   // are made to line up.
   assert.deepEqual(blogConfig().categoryPath, ['Products', 'Docstack', 'Release notes']);
+});
+
+test('a post carries no header of ours, even where the documentation does', () => {
+  // The theme renders one around a post. A second would repeat it, and could
+  // not be built properly anyway: its menu comes from the documentation's
+  // sidebars, which a blog run does not load.
+  const config = resolveConfig({
+    flags: { blog: true },
+    env: CREDENTIALS,
+    file: {
+      target: { root: '/products/docstack' },
+      layout: { header: true },
+      blog: { category: 'Release notes' },
+    },
+  });
+
+  assert.equal(config.layout.header, false);
+  // Unless the site asks for one outright.
+  assert.equal(
+    resolveConfig({
+      flags: { blog: true },
+      env: CREDENTIALS,
+      file: { blog: { category: 'Release notes', layout: { header: true } } },
+    }).layout.header,
+    true,
+  );
 });
 
 test('a category tree that does not follow the paths can be named outright', () => {

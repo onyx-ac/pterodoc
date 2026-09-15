@@ -169,6 +169,7 @@ export function createWordpressTarget(
       let terms: TermIndex | undefined;
       let categoryId: number | undefined;
       const categoryWarnings: string[] = [];
+      let markerChecked = false;
 
       return {
         async loadIndex(): Promise<RemotePage[]> {
@@ -337,7 +338,20 @@ export function createWordpressTarget(
           }
 
           try {
-            await posts.update(id, body);
+            const written = await posts.update(id, body);
+
+            // WordPress does not reject metadata it has no registration for --
+            // it ignores it. So a site without the plugin publishes perfectly
+            // well and stores no marker, and nothing would notice until a
+            // prune failed to recognise its own posts and left them standing.
+            if (flat && !markerChecked) {
+              markerChecked = true;
+              if (written.meta?.[OWNERSHIP_META] !== OWNERSHIP_VALUE) {
+                warnings.push(
+                  'WordPress stored no ownership marker on the post, so pterodocs will not recognise what it published here later: prune and purge will leave these posts standing. The pterodocs plugin registers the key, so this usually means it is not installed, not active, or older than 0.5.0.',
+                );
+              }
+            }
           } catch (error) {
             // A locked-down site may reject the metadata or the template. The
             // page itself matters more than either, so try again without them.

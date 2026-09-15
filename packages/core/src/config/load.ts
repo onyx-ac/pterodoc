@@ -355,6 +355,11 @@ export function resolveConfig(input: {
       breadcrumb: false,
       pagination: false,
       childIndex: 'none',
+      // The site's own theme renders a header around a post, so a second one
+      // would sit under it saying the same thing. It could not say it well
+      // either: the menu is built from the documentation's sidebars, and a
+      // blog run does not load them.
+      header: false,
       ...blog.layout,
     });
   }

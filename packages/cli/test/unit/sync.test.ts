@@ -918,3 +918,30 @@ test('documentation with no authors says nothing about them', async () => {
   assert.equal(plan.issues.some((issue) => issue.code === 'authors-not-mapped'), false);
   await t.cleanup();
 });
+
+test('a site that stored no ownership marker is told what that costs', async () => {
+  // WordPress ignores metadata it has no registration for rather than
+  // refusing it, so a site without the plugin publishes perfectly well and
+  // silently loses the only thing that identifies these posts as ours.
+  const t = await blogRun();
+
+  // Drop the marker on the way back, the way an unregistered key is dropped.
+  const original = t.fake.fetch;
+  (t.fake as { fetch: typeof original }).fetch = async (input, init) => {
+    const response = await original(input, init);
+    if (String(init?.method ?? 'GET').toUpperCase() !== 'POST') return response;
+    const body = (await response.clone().json()) as { meta?: Record<string, unknown> };
+    if (body && body.meta) delete body.meta['_pterodocs_source'];
+    return new Response(JSON.stringify(body), {
+      status: response.status,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  const { plan } = await t.run();
+  assert.ok(
+    plan.issues.some((issue) => /ownership marker/.test(issue.message)),
+    plan.issues.map((issue) => issue.message.slice(0, 60)).join(' | '),
+  );
+  await t.cleanup();
+});

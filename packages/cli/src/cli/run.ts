@@ -84,6 +84,7 @@ function readerFor(
     // Read the blog only for a run that came for it. `instances` is already
     // empty in that case, so a blog run loads the blog and nothing else.
     blog: everything || config.publish === 'blog',
+    navbar: everything || config.layout.header,
     versions: config.versions,
     includeDrafts: config.includeDrafts,
     warn: (message) => reporter.issue({ code: 'docusaurus-version', severity: 'warning', message }),
