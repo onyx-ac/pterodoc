@@ -89,6 +89,7 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
   let siteTitle = '';
   let llms: Artifacts['llms'] = null;
   let published: string | undefined;
+  const offSite = new Set<string>();
 
   const locales = await selectLocales(config, deps.reader);
 
@@ -128,6 +129,7 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
           session,
           issues,
           log,
+          offSite,
         });
         actions.push(...result.actions);
         prepared.push(...result.prepared);
@@ -135,6 +137,25 @@ export async function runSync(config: ResolvedConfig, deps: RunSyncDeps): Promis
         mediaPending += result.mediaPending;
         rootId ??= result.rootId;
       }
+    }
+
+    // A run publishes one tree and can see no other, so a link from a release
+    // note into the documentation is indistinguishable from a link to
+    // something nobody publishes: both resolve to nothing here, and both are
+    // sent to the Docusaurus site. The documentation may well be published --
+    // by the other run -- and pointing at it would need this run to know what
+    // that one did, which it does not. So it names them instead, because
+    // "fix these by hand" is no use without knowing which.
+    if (config.publish === 'blog' && offSite.size > 0) {
+      const shown = [...offSite].sort();
+      issues.add({
+        code: 'link-left-the-site',
+        severity: 'info',
+        message:
+          `${shown.length} link(s) point at the Docusaurus site because this run could not see whether anything else publishes them: ` +
+          `${shown.slice(0, 10).join(', ')}${shown.length > 10 ? `, and ${shown.length - 10} more` : ''}. ` +
+          'A documentation run publishes its own tree and a blog run publishes the blog; neither can resolve a link into the other.',
+      });
     }
 
     // After the instances, not before: the target only knows where it listed
@@ -359,6 +380,8 @@ interface SyncVersionInput {
   session: TargetSession | undefined;
   issues: IssueCollector;
   log: (message: string) => void;
+  /** Collects destinations this run sent back to the Docusaurus site. */
+  offSite: Set<string>;
 }
 
 /** Publish one version of one docs instance. */
@@ -511,6 +534,7 @@ async function syncVersion(input: SyncVersionInput): Promise<{
       issues,
       emitMarkdown: config.llms.full,
       blogIndex: session?.blogIndex?.(),
+      offSite: input.offSite,
       ...(banner ? { banner } : {}),
     });
     prepared.push({ node, page, locale, versionName: version.name, markdown });
@@ -721,6 +745,8 @@ function renderPageFor(input: {
   banner?: string;
   /** Where the site's blog is listed on the target, when it knows. */
   blogIndex?: string | undefined;
+  /** Collects destinations this run sent back to the Docusaurus site. */
+  offSite?: Set<string> | undefined;
 }): { page: RenderedPage; markdown: string | undefined } {
   const { node, tree, config, model, theme, issues } = input;
   const doc = node.doc;
@@ -745,7 +771,7 @@ function renderPageFor(input: {
         onUnknownJsx: config.mdxOnUnknown,
         media: input.media,
         issues,
-        resolveLink: makeLinkResolver(doc, tree, config, model, input.href),
+        resolveLink: makeLinkResolver(doc, tree, config, model, input.href, input.offSite),
         emitMarkdown: input.emitMarkdown,
       });
       body = rendered.body;
@@ -813,6 +839,8 @@ function makeLinkResolver(
   config: ResolvedConfig,
   model: SiteModel,
   href: (treePath: string) => string,
+  /** Collects destinations this run sent back to the Docusaurus site. */
+  offSite?: Set<string>,
 ): LinkResolver {
   const siteUrl = (config.siteUrl || model.url).replace(/\/+$/, '');
   const baseUrl = model.baseUrl.replace(/\/+$/, '');
@@ -850,6 +878,7 @@ function makeLinkResolver(
     const urlPath = target.startsWith('/')
       ? withBaseUrl(path.posix.normalize(target))
       : path.posix.normalize(path.posix.join(doc.permalink, '..', target.replace(/\.mdx?$/, '')));
+    offSite?.add(`${siteUrl}${urlPath}`);
     return { href: `${siteUrl}${urlPath}${hash}` };
   };
 }

@@ -69,6 +69,15 @@
   always is. Only the blog's own root is retargeted; a link to one post is
   about that post.
 
+- **A run names the links it had to send back to the Docusaurus site.** A run
+  publishes one tree and can see no other, so a link from a release note into
+  the documentation resolves to nothing and is treated exactly like a link to
+  something nobody publishes — even when that page *is* published, by the other
+  run. pterodocs cannot tell the two apart, and takes the answer that always
+  works over the one that is sometimes better. It lists them now, because "fix
+  these by hand" is no use without knowing which. In `plan.json` always, and on
+  screen with `--verbose`.
+
 - **The plugin registers an ownership marker on published posts.** A post
   carries no generated layout to be recognised by — no navigation column, no
   breadcrumb — so without it nothing could tell later which posts in a blog

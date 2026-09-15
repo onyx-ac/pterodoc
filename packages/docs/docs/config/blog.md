@@ -137,6 +137,64 @@ own readers to WordPress too:
 { href: 'https://example.com/topics/products/docstack/release-notes/', label: 'Releases', position: 'left' },
 ```
 
+## Links from a post into your documentation
+
+:::warning A post's links to your docs are not retargeted
+
+A run publishes one tree and can see no other. A blog run publishes the blog; it does not load
+your documentation and does not know what a documentation run published or where. So a link
+from a release note into your docs:
+
+```md
+See [write transactions](/docs/guides/write-transactions).
+```
+
+resolves to nothing in *this* run's tree, and is treated exactly like a link to something
+nobody publishes — it points at your Docusaurus site:
+
+```
+https://yourproject.github.io/docs/guides/write-transactions
+```
+
+even when that page **is** published on WordPress at
+`/products/yourproduct/docs/guides/write-transactions/`.
+
+pterodocs cannot tell the two cases apart, so it takes the answer that always works over the
+one that is sometimes better. **Repoint these by hand** if you want them staying on the site.
+
+:::
+
+The same is true in reverse: a link from your documentation to a blog post points at the
+Docusaurus blog. The one exception is the navbar entry naming the blog itself, which is
+retargeted to the archive — see [Linking readers to them](#linking-readers-to-them) — because
+there the destination is a single known address rather than a page whose existence this run
+would have to guess at.
+
+### Finding them
+
+You do not have to read every post. A blog run lists them:
+
+```
+$ pterodocs sync --blog --verbose
+  ! 2 link(s) point at the Docusaurus site because this run could not see whether anything
+    else publishes them: https://yourproject.github.io/docs/guides/patches,
+    https://yourproject.github.io/docs/guides/write-transactions.
+```
+
+They are in `plan.json` under `issues` on every run, with or without `--verbose`.
+
+### Writing them so they survive
+
+Write the absolute WordPress URL in the post's source. An href that already names a host is
+published exactly as written:
+
+```md
+See [write transactions](https://example.com/products/yourproduct/docs/guides/write-transactions/).
+```
+
+The cost is that the link leaves the Docusaurus site for readers there, so it is a trade rather
+than a fix — which is why pterodocs does not make it for you.
+
 ## Tags
 
 A post's front-matter tags become real WordPress tags:

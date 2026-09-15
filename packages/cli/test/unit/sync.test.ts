@@ -1049,3 +1049,33 @@ test('a docs run files nothing and creates no categories', async () => {
   }
   await t.cleanup();
 });
+
+test('a blog run names the links it had to send to the Docusaurus site', async () => {
+  // A release note linking into the documentation resolves to nothing here:
+  // this run publishes the blog and cannot see what a documentation run
+  // published. Sending it to Docusaurus is the honest answer, but "fix these
+  // by hand" is no use without knowing which.
+  const t = await blogRun();
+  const post = t.model.instances.at(-1)!.versions[0]!.docs[0]!;
+  await fs.writeFile(
+    post.sourceAbsolutePath,
+    `See [write transactions](/docs/guides/write-transactions).${String.fromCharCode(10)}`,
+  );
+
+  const { plan } = await t.run();
+  const said = plan.issues.find((issue) => issue.code === 'link-left-the-site');
+
+  assert.ok(said, plan.issues.map((issue) => issue.code).join(', '));
+  assert.match(said!.message, /\/docs\/guides\/write-transactions/);
+  await t.cleanup();
+});
+
+test('a docs run does not report links it was configured to send away', async () => {
+  // `unpublishedLinks: site` is doing exactly what it says there. The blog is
+  // the case where the destination may well be published, just not by this run.
+  const t = await setup();
+  const { plan } = await t.run();
+
+  assert.equal(plan.issues.some((issue) => issue.code === 'link-left-the-site'), false);
+  await t.cleanup();
+});
