@@ -59,6 +59,7 @@ function targetFor(config: ResolvedConfig, fake: FakeWp) {
       user: config.user,
       appPassword: config.appPassword,
       policy: { rootSegments: config.rootSegments, baseSegments: config.baseSegments },
+      restBase: config.restBase,
       status: config.status,
       template: config.template,
       lang: config.lang,

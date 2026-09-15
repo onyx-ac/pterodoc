@@ -80,6 +80,14 @@ export interface ResolvedConfig {
   appPassword: string;
   rootSegments: string[];
   baseSegments: string[];
+  /**
+   * The REST collection the tree is published into.
+   *
+   * `pages` for documentation. A blog run names the custom post type the
+   * plugin registers instead, which is the only thing that differs between
+   * publishing a page and publishing a release note.
+   */
+  restBase: string;
   docsTitle: string;
   status: 'publish' | 'draft' | 'private';
   template: string;
@@ -328,6 +336,7 @@ export function resolveConfig(input: {
     appPassword,
     rootSegments: toSlugSegments(rootPath, 'the target root path'),
     baseSegments: toSlugSegments(basePath, 'the target base'),
+    restBase: 'pages',
     docsTitle: target.title ?? '',
     status,
     template: target.template ?? '',

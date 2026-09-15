@@ -62,6 +62,7 @@ async function open(fake: FakeWp) {
       user: 'someone',
       appPassword: 'pw',
       policy: { rootSegments: ['product', 'docstack'], baseSegments: ['docs'] },
+      restBase: 'pages',
       status: 'publish',
       template: '',
       lang: '',

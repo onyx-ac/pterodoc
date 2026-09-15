@@ -1,15 +1,20 @@
 /**
- * WordPress pages: finding them, comparing them, writing them, removing them.
+ * WordPress posts: finding them, comparing them, writing them, removing them.
  *
- * A page's identity is its parent and its slug, which is what makes a re-run
+ * A post's identity is its parent and its slug, which is what makes a re-run
  * rewrite only what actually differs.
+ *
+ * Every route here is built from a REST base rather than written out, because
+ * a page and a release note are the same thing to everything above this file —
+ * only the route differs. The base belongs here and not on `WpClient`: the
+ * client is shared with `/media` and `/settings`, which have bases of their own.
  */
 
 import { TargetError } from '@pterodocs/core/util';
 import type { RemotePage, RenderedPage } from '@pterodocs/core/target';
 import { FULL_PAGE_FIELDS, PAGE_FIELDS, type WpClient } from './client';
 
-/** WordPress's own page shape, narrowed to what is read. */
+/** WordPress's own post shape, narrowed to what is read. */
 interface WpPage {
   id: number;
   parent: number;
@@ -24,7 +29,7 @@ interface WpPage {
   meta?: Record<string, unknown>;
 }
 
-/** Convert a WordPress page into the shape the reconciler compares. */
+/** Convert a WordPress post into the shape the reconciler compares. */
 export function toRemotePage(page: WpPage): RemotePage {
   return {
     id: page.id,
@@ -41,53 +46,7 @@ export function toRemotePage(page: WpPage): RemotePage {
   };
 }
 
-/** Fetch every page on the site. */
-export async function fetchPageIndex(client: WpClient): Promise<RemotePage[]> {
-  const pages = await client.listAll<WpPage>('/pages', {
-    status: 'any',
-    context: 'edit',
-    _fields: PAGE_FIELDS,
-  });
-  return pages.map(toRemotePage);
-}
-
-/** Fetch one page with the fields needed to compare it. */
-export async function fetchPage(client: WpClient, id: number): Promise<RemotePage> {
-  const { data } = await client.request<WpPage>('GET', `/pages/${id}`, {
-    query: { context: 'edit', _fields: FULL_PAGE_FIELDS },
-  });
-  return toRemotePage(data);
-}
-
-/**
- * Find a page by its position in the tree.
- *
- * The index is searched when one was supplied, because a whole-site index is
- * one request where per-page lookups are hundreds.
- */
-export async function findPage(
-  client: WpClient,
-  parent: number,
-  slug: string,
-  index?: RemotePage[],
-  log: (message: string) => void = () => {},
-): Promise<RemotePage | undefined> {
-  let candidates: RemotePage[];
-  if (index) {
-    candidates = index.filter((page) => page.parent === parent && page.slug === slug);
-  } else {
-    const { data } = await client.request<WpPage[]>('GET', '/pages', {
-      query: { parent, slug, status: 'any', context: 'edit', per_page: 100, _fields: PAGE_FIELDS },
-    });
-    candidates = (Array.isArray(data) ? data : []).map(toRemotePage);
-  }
-  if (candidates.length > 1) {
-    log(`${candidates.length} pages share parent ${parent} and slug "${slug}"; using id ${candidates[0]!.id}.`);
-  }
-  return candidates[0];
-}
-
-/** Body sent when creating or updating a page. */
+/** Body sent when creating or updating a post. */
 export interface PageInput {
   title?: string;
   content?: string;
@@ -100,36 +59,102 @@ export interface PageInput {
   meta?: Record<string, unknown>;
 }
 
-/** Create a page, checking that WordPress honoured the slug we asked for. */
-export async function createPage(client: WpClient, input: PageInput): Promise<RemotePage> {
-  const { data } = await client.request<WpPage>('POST', '/pages', { body: input });
-  if (input.slug && data.slug !== input.slug) {
-    throw new TargetError(
-      `WordPress stored the new page as "${data.slug}" rather than "${input.slug}". Another page, possibly one in the trash, already holds that slug. The page it created is id ${data.id}.`,
-      { status: 200, method: 'POST', url: '/pages' },
-    );
-  }
-  return toRemotePage(data);
-}
-
-/** Update a page. */
-export async function updatePage(
-  client: WpClient,
-  id: number,
-  input: PageInput,
-): Promise<RemotePage> {
-  const { data } = await client.request<WpPage>('POST', `/pages/${id}`, { body: input });
-  return toRemotePage(data);
+/** The six things a sync does to a post type, bound to one REST base. */
+export interface PostsApi {
+  /** The REST base these routes are built from. */
+  readonly restBase: string;
+  /** Fetch every post of this type on the site. */
+  fetchIndex(): Promise<RemotePage[]>;
+  /** Fetch one post with the fields needed to compare it. */
+  fetchOne(id: number): Promise<RemotePage>;
+  /** Find a post by its position in the tree. */
+  find(
+    parent: number,
+    slug: string,
+    index?: RemotePage[],
+    log?: (message: string) => void,
+  ): Promise<RemotePage | undefined>;
+  /** Create a post, checking that WordPress honoured the slug we asked for. */
+  create(input: PageInput): Promise<RemotePage>;
+  /** Update a post. */
+  update(id: number, input: PageInput): Promise<RemotePage>;
+  /**
+   * Move a post to the trash.
+   *
+   * Never a permanent delete: recovering from a mistaken prune should not
+   * require a database backup.
+   */
+  trash(id: number): Promise<void>;
 }
 
 /**
- * Move a page to the trash.
+ * Bind the post routes to one REST base.
  *
- * Never a permanent delete: recovering from a mistaken prune should not
- * require a database backup.
+ * @param client The site to talk to.
+ * @param restBase The collection, without a slash: `pages`, or a post type's
+ *   own `rest_base`.
  */
-export async function trashPage(client: WpClient, id: number): Promise<void> {
-  await client.request('DELETE', `/pages/${id}`);
+export function createPostsApi(client: WpClient, restBase: string): PostsApi {
+  const collection = `/${restBase}`;
+  const one = (id: number): string => `${collection}/${id}`;
+
+  return {
+    restBase,
+
+    async fetchIndex(): Promise<RemotePage[]> {
+      const pages = await client.listAll<WpPage>(collection, {
+        status: 'any',
+        context: 'edit',
+        _fields: PAGE_FIELDS,
+      });
+      return pages.map(toRemotePage);
+    },
+
+    async fetchOne(id: number): Promise<RemotePage> {
+      const { data } = await client.request<WpPage>('GET', one(id), {
+        query: { context: 'edit', _fields: FULL_PAGE_FIELDS },
+      });
+      return toRemotePage(data);
+    },
+
+    async find(parent, slug, index, log = () => {}): Promise<RemotePage | undefined> {
+      let candidates: RemotePage[];
+      // The index is searched when one was supplied, because a whole-site index
+      // is one request where per-page lookups are hundreds.
+      if (index) {
+        candidates = index.filter((page) => page.parent === parent && page.slug === slug);
+      } else {
+        const { data } = await client.request<WpPage[]>('GET', collection, {
+          query: { parent, slug, status: 'any', context: 'edit', per_page: 100, _fields: PAGE_FIELDS },
+        });
+        candidates = (Array.isArray(data) ? data : []).map(toRemotePage);
+      }
+      if (candidates.length > 1) {
+        log(`${candidates.length} pages share parent ${parent} and slug "${slug}"; using id ${candidates[0]!.id}.`);
+      }
+      return candidates[0];
+    },
+
+    async create(input: PageInput): Promise<RemotePage> {
+      const { data } = await client.request<WpPage>('POST', collection, { body: input });
+      if (input.slug && data.slug !== input.slug) {
+        throw new TargetError(
+          `WordPress stored the new page as "${data.slug}" rather than "${input.slug}". Another page, possibly one in the trash, already holds that slug. The page it created is id ${data.id}.`,
+          { status: 200, method: 'POST', url: collection },
+        );
+      }
+      return toRemotePage(data);
+    },
+
+    async update(id: number, input: PageInput): Promise<RemotePage> {
+      const { data } = await client.request<WpPage>('POST', one(id), { body: input });
+      return toRemotePage(data);
+    },
+
+    async trash(id: number): Promise<void> {
+      await client.request('DELETE', one(id));
+    },
+  };
 }
 
 /** Normalise a value for comparison, so whitespace alone is not a difference. */

@@ -51,6 +51,8 @@ export interface FakeCall {
 /** What the fake exposes to a test. */
 export interface FakeWp {
   fetch: typeof globalThis.fetch;
+  /** The collection pages are served from. */
+  restBase: string;
   pages: FakePage[];
   media: FakeMedia[];
   calls: FakeCall[];
@@ -86,8 +88,13 @@ export function createFakeWp(
     pages?: (Partial<FakePage> & { id: number; slug: string })[];
     media?: FakeMedia[];
     failures?: Map<string, FakeFailure[]>;
+    /** The collection pages are served from, for a custom post type. */
+    restBase?: string;
   } = {},
 ): FakeWp {
+  const restBase = options.restBase ?? 'pages';
+  const collection = `/${restBase}`;
+  const singular = new RegExp(`^/${restBase}/(\\d+)$`);
   let nextId = 1000;
   const pages: FakePage[] = (options.pages ?? []).map(makePage);
   const media: FakeMedia[] = [...(options.media ?? [])];
@@ -130,10 +137,10 @@ export function createFakeWp(
       });
     }
 
-    const pageId = /^\/pages\/(\d+)$/.exec(path);
+    const pageId = singular.exec(path);
     const mediaId = /^\/media\/(\d+)$/.exec(path);
 
-    if (routedAs === 'GET' && path === '/pages') {
+    if (routedAs === 'GET' && path === collection) {
       let found = pages.filter((page) => page.status !== 'trash' || query['status'] === 'any');
       if (query['parent'] !== undefined) found = found.filter((p) => p.parent === Number(query['parent']));
       if (query['slug'] !== undefined) found = found.filter((p) => p.slug === query['slug']);
@@ -150,7 +157,7 @@ export function createFakeWp(
       return page ? json(page) : notFound();
     }
 
-    if (routedAs === 'POST' && path === '/pages') {
+    if (routedAs === 'POST' && path === collection) {
       const requested = String(body['slug'] ?? '');
       // WordPress appends a suffix when the slug is already taken.
       const taken = pages.some((p) => p.parent === Number(body['parent'] ?? 0) && p.slug === requested);
@@ -233,5 +240,5 @@ export function createFakeWp(
     });
   };
 
-  return { fetch, pages, media, calls, writes };
+  return { fetch, restBase, pages, media, calls, writes };
 }

@@ -4,18 +4,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TargetError } from '@pterodocs/core/util';
 import { WpClient } from '../../src/client';
-import {
-  computePrune,
-  createPage,
-  diffPage,
-  fetchPageIndex,
-  findPage,
-  trashPage,
-} from '../../src/pages';
+import { computePrune, createPostsApi, diffPage } from '../../src/pages';
 import { hrefFor, prefixSegments, splitOwnership } from '../../src/url';
 import { hashFromSlug, mediaSlug } from '../../src/media';
 import { createFakeWp, type FakeWp } from '../fixtures/fake-wp';
 import type { RemotePage, RenderedPage } from '@pterodocs/core/target';
+
+/** The page routes, bound to whichever collection the fake is serving. */
+function posts(fake: FakeWp, options: Partial<ConstructorParameters<typeof WpClient>[0]> = {}) {
+  return createPostsApi(client(fake, options), fake.restBase);
+}
 
 function client(fake: FakeWp, options: Partial<ConstructorParameters<typeof WpClient>[0]> = {}) {
   return new WpClient({
@@ -43,7 +41,7 @@ test('requests carry Basic auth, a user agent, and ask only for the fields used'
       });
     },
   });
-  await fetchPageIndex(wp);
+  await createPostsApi(wp, 'pages').fetchIndex();
 
   const call = seen[0]!;
   const headers = call.init.headers as Record<string, string>;
@@ -66,7 +64,7 @@ test('collections are followed to the last page', async () => {
   const fake = createFakeWp({
     pages: Array.from({ length: 150 }, (_, index) => ({ id: index + 1, slug: `p${index + 1}` })),
   });
-  assert.equal((await fetchPageIndex(client(fake))).length, 150);
+  assert.equal((await posts(fake).fetchIndex()).length, 150);
 });
 
 test('being busy is retried, and Retry-After applies once, not forever', async () => {
@@ -77,7 +75,7 @@ test('being busy is retried, and Retry-After applies once, not forever', async (
   const fake = createFakeWp({ pages: [{ id: 1, slug: 'a' }], failures });
   const wp = client(fake, { sleep: async (ms: number) => void waits.push(ms) });
 
-  assert.equal((await fetchPageIndex(wp)).length, 1);
+  assert.equal((await createPostsApi(wp, 'pages').fetchIndex()).length, 1);
   // Five seconds because the 429 asked for it, then the ordinary backoff.
   assert.deepEqual(waits, [5000, 2000]);
 });
@@ -87,7 +85,7 @@ test('a refusal is raised at once, with the code the site gave', async () => {
     ['GET /pages', [{ status: 403, body: '{"code":"rest_forbidden","message":"Sorry"}' }]],
   ]);
   await assert.rejects(
-    () => fetchPageIndex(client(createFakeWp({ failures }))),
+    () => posts(createFakeWp({ failures })).fetchIndex(),
     (error: TargetError) => {
       assert.equal(error.status, 403);
       assert.equal(error.code, 'rest_forbidden');
@@ -104,7 +102,7 @@ test('an HTML error body is reported as a blocked REST API', async () => {
         headers: { 'content-type': 'text/html' },
       }),
   });
-  await assert.rejects(() => fetchPageIndex(wp), /firewall or security plugin/);
+  await assert.rejects(() => createPostsApi(wp, 'pages').fetchIndex(), /firewall or security plugin/);
 });
 
 test('a redirect is explained rather than retried', async () => {
@@ -113,7 +111,7 @@ test('a redirect is explained rather than retried', async () => {
       throw new TypeError('unexpected redirect');
     },
   });
-  await assert.rejects(() => fetchPageIndex(wp), /redirected.*WP_URL/s);
+  await assert.rejects(() => createPostsApi(wp, 'pages').fetchIndex(), /redirected.*WP_URL/s);
   // One attempt: retrying a redirect would never succeed.
   assert.equal(wp.requestCount, 1);
 });
@@ -125,24 +123,50 @@ test('pages are found by parent and slug', async () => {
       { id: 2, slug: 'docs', parent: 1 },
     ],
   });
-  const wp = client(fake);
-  const index = await fetchPageIndex(wp);
-  assert.equal((await findPage(wp, 0, 'docs', index))!.id, 1);
-  assert.equal((await findPage(wp, 1, 'docs', index))!.id, 2);
-  assert.equal(await findPage(wp, 9, 'docs', index), undefined);
+  const wp = posts(fake);
+  const index = await wp.fetchIndex();
+  assert.equal((await wp.find(0, 'docs', index))!.id, 1);
+  assert.equal((await wp.find(1, 'docs', index))!.id, 2);
+  assert.equal(await wp.find(9, 'docs', index), undefined);
 });
 
 test('a slug WordPress would not honour is an error, not a silent rename', async () => {
   const fake = createFakeWp({ pages: [{ id: 1, slug: 'docs', parent: 0 }] });
   await assert.rejects(
-    () => createPage(client(fake), { title: 'Docs', slug: 'docs', parent: 0 }),
+    () => posts(fake).create({ title: 'Docs', slug: 'docs', parent: 0 }),
     /already holds that slug/,
+  );
+});
+
+test('every route is built from the collection it was given', async () => {
+  // A custom post type is the same five operations against a different route,
+  // and a literal `/pages` left behind anywhere would reach the wrong one — or
+  // succeed against real pages, which is worse.
+  const fake = createFakeWp({ restBase: 'pterodocs_release', pages: [{ id: 7, slug: 'v1', parent: 0 }] });
+  const api = createPostsApi(client(fake), 'pterodocs_release');
+
+  await api.fetchIndex();
+  await api.fetchOne(7);
+  await api.find(0, 'v1');
+  await api.create({ title: 'v2', slug: 'v2', parent: 0 });
+  await api.update(7, { title: 'v1.1' });
+  await api.trash(7);
+
+  const paths = new Set(fake.calls.map((call) => call.path));
+  assert.deepEqual([...paths].sort(), ['/pterodocs_release', '/pterodocs_release/7']);
+});
+
+test('a post the collection would not accept names that collection, not pages', async () => {
+  const fake = createFakeWp({ restBase: 'pterodocs_release', pages: [{ id: 1, slug: 'v1', parent: 0 }] });
+  await assert.rejects(
+    () => createPostsApi(client(fake), 'pterodocs_release').create({ slug: 'v1', parent: 0 }),
+    (error: TargetError) => error.url === '/pterodocs_release',
   );
 });
 
 test('removing a page trashes it', async () => {
   const fake = createFakeWp({ pages: [{ id: 7, slug: 'gone', parent: 1 }] });
-  await trashPage(client(fake), 7);
+  await posts(fake).trash(7);
   assert.equal(fake.calls.at(-1)!.method, 'DELETE');
   assert.equal(fake.calls.at(-1)!.query['force'], undefined);
   assert.equal(fake.pages.find((page) => page.id === 7)!.status, 'trash');
@@ -150,7 +174,7 @@ test('removing a page trashes it', async () => {
 
 test('the method override turns a DELETE into a POST for restrictive hosts', async () => {
   const fake = createFakeWp({ pages: [{ id: 7, slug: 'gone', parent: 1 }] });
-  await trashPage(client(fake, { methodOverride: true }), 7);
+  await posts(fake, { methodOverride: true }).trash(7);
   const call = fake.calls.at(-1)!;
   assert.equal(call.method, 'POST');
   assert.equal(call.routedAs, 'DELETE');

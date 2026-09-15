@@ -17,13 +17,8 @@ import { DEFAULT_RETRY, WpClient, type RetryPolicy } from './client';
 import { loadMediaIndex, uploadMedia } from './media';
 import {
   computePrune,
-  createPage,
+  createPostsApi,
   diffPage,
-  fetchPage,
-  fetchPageIndex,
-  findPage,
-  trashPage,
-  updatePage,
   type PageInput,
 } from './pages';
 import { hrefFor, splitOwnership, type WordpressUrlPolicy } from './url';
@@ -63,6 +58,13 @@ export interface WordpressTargetOptions {
   lang: string;
   /** Prefix of the slug that identifies uploaded media. */
   mediaSlugPrefix: string;
+  /**
+   * The REST collection the tree is published into.
+   *
+   * `pages` unless a post type registered by the plugin is being published,
+   * in which case it is that type's own `rest_base`.
+   */
+  restBase: string;
   /** Send DELETE as POST with an override header. */
   methodOverride: boolean;
   /** Retry policy. */
@@ -115,12 +117,13 @@ export function createWordpressTarget(
 
     async open(context): Promise<TargetSession> {
       const client = makeClient(context.locale);
+      const posts = createPostsApi(client, options.restBase);
       const dryRun = context.dryRun;
       let index: RemotePage[] | undefined;
 
       return {
         async loadIndex(): Promise<RemotePage[]> {
-          index ??= await fetchPageIndex(client);
+          index ??= await posts.fetchIndex();
           return index;
         },
 
@@ -136,7 +139,7 @@ export function createWordpressTarget(
               created.push({ path: `/${slug}/`, id: null });
               continue;
             }
-            const existing = await findPage(client, parentId, slug, index, log);
+            const existing = await posts.find(parentId, slug, index, log);
             if (existing) {
               if (existing.status === 'trash') {
                 throw new TargetError(
@@ -154,14 +157,14 @@ export function createWordpressTarget(
             }
             // A page created only so the documentation has a parent: it lists
             // what is below it and claims nothing else.
-            const page = await createPage(client, {
+            const page = await posts.create({
               title: titleCase(slug),
               slug,
               parent: parentId,
               status: 'publish',
               content: PLACEHOLDER,
             });
-            await updatePage(client, page.id, { content: renderNavigationStub(page.id) });
+            await posts.update(page.id, { content: renderNavigationStub(page.id) });
             created.push({ path: `/${slug}/`, id: page.id });
             parentId = page.id;
           }
@@ -173,7 +176,7 @@ export function createWordpressTarget(
           if (request.parentId === null) return { id: null, created: true, warnings };
 
           const slug = request.isRoot ? rootSlug : request.slug;
-          const existing = await findPage(client, request.parentId, slug, index, log);
+          const existing = await posts.find(request.parentId, slug, index, log);
           if (existing) {
             if (existing.status === 'trash') {
               warnings.push(
@@ -185,7 +188,7 @@ export function createWordpressTarget(
           if (dryRun) return { id: null, created: true, warnings };
 
           // Created as a draft: a placeholder must never appear in navigation.
-          const created = await createPage(client, {
+          const created = await posts.create({
             title: request.title,
             slug,
             parent: request.parentId,
@@ -197,7 +200,7 @@ export function createWordpressTarget(
         },
 
         async fetchPage(id: number): Promise<RemotePage> {
-          return fetchPage(client, id);
+          return posts.fetchOne(id);
         },
 
         diffPage(remote: RemotePage, rendered: RenderedPage, parentId: number): string[] {
@@ -225,7 +228,7 @@ export function createWordpressTarget(
           if (Object.keys(page.meta).length > 0) body.meta = page.meta;
 
           try {
-            await updatePage(client, id, body);
+            await posts.update(id, body);
           } catch (error) {
             // A locked-down site may reject the metadata or the template. The
             // page itself matters more than either, so try again without them.
@@ -236,7 +239,7 @@ export function createWordpressTarget(
               warnings.push(
                 `${page.path || '(root)'}: WordPress refused the template or the metadata, so the page was published without them.`,
               );
-              await updatePage(client, id, body);
+              await posts.update(id, body);
             } else throw error;
           }
           return { warnings };
@@ -247,7 +250,7 @@ export function createWordpressTarget(
           if (dryRun) return { warnings: [] };
 
           try {
-            await updatePage(client, id, { meta });
+            await posts.update(id, { meta });
           } catch (error) {
             // Every key here is registered by the pterodocs plugin, so the
             // usual reason to be refused is that it is not installed. That is
@@ -279,7 +282,7 @@ export function createWordpressTarget(
         },
 
         async removePage(page: RemotePage): Promise<void> {
-          await trashPage(client, page.id);
+          await posts.trash(page.id);
         },
 
         async loadMediaIndex(): Promise<Map<string, MediaRef>> {

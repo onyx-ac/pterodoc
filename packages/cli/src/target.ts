@@ -27,6 +27,7 @@ export function resolveTarget(config: ResolvedConfig): Target {
       rootSegments: config.rootSegments,
       baseSegments: config.baseSegments,
     },
+    restBase: config.restBase,
     status: config.status,
     template: config.template,
     lang: config.lang,
