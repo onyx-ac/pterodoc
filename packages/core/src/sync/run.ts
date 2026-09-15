@@ -15,10 +15,17 @@ import { contentHash } from '../util/hash';
 import { mimeTypeFor } from '../util/mime';
 import { titleCase } from '../util/paths';
 import { buildPageTree, type PageNode, type PageTree } from '../model/tree';
-import type { Doc, DocsVersion, SiteModel } from '../model/types';
+import type { Doc, DocsVersion, NavbarItem, SiteModel, SiteNavbar } from '../model/types';
 import type { SourceReader } from '../model/reader';
 import { renderDoc, excerptFor } from '../render/index';
-import { composePage, isGeneratedPage, renderVersionBanner, type PageLayout } from '../render/page';
+import {
+  composePage,
+  isGeneratedPage,
+  renderVersionBanner,
+  type HeaderLike,
+  type HeaderLink,
+  type PageLayout,
+} from '../render/page';
 import { createTheme, type Theme } from '../render/theme';
 import { stylesheetFor } from '../render/stylesheet';
 import { collectImages, resolveImage } from '../render/images';
@@ -555,6 +562,46 @@ async function syncVersion(input: SyncVersionInput): Promise<{
   return { actions, prepared, media: mediaRecords, mediaPending, rootId: navRootId };
 }
 
+/**
+ * Turn the site's navbar into what the renderer wants.
+ *
+ * Two things happen here, and both are the reconciler's to do. A destination
+ * that names a page this run published becomes that page's URL on the target;
+ * anything else -- an external link, a page left on the Docusaurus site --
+ * keeps the address it already had, which is the same rule links inside a
+ * document follow.
+ *
+ * @param navbar The navbar as Docusaurus declared it.
+ * @param tree The published tree, for recognising an internal destination.
+ * @param href Where a tree path lives on the target.
+ * @returns The header, or undefined when the site declares no navbar.
+ */
+function headerFor(
+  navbar: SiteNavbar | undefined,
+  tree: PageTree,
+  href: (treePath: string) => string,
+): HeaderLike | undefined {
+  if (!navbar) return undefined;
+
+  const retarget = (link: string): string => {
+    if (!link) return '';
+    const node = tree.byPermalink.get(link) ?? tree.byPermalink.get(`${link.replace(/\/+$/, '')}/`);
+    return node ? href(node.path) : link;
+  };
+
+  const convert = (item: NavbarItem): HeaderLink => ({
+    label: item.label,
+    href: retarget(item.href),
+    ...(item.items ? { items: item.items.map(convert) } : {}),
+  });
+
+  return {
+    title: navbar.title,
+    href: href(''),
+    items: navbar.items.map((item) => ({ ...convert(item), position: item.position })),
+  };
+}
+
 /** Render one page, body and all. */
 function renderPageFor(input: {
   emitMarkdown: boolean;
@@ -604,6 +651,8 @@ function renderPageFor(input: {
     }
   }
 
+  const header = headerFor(model.navbar, tree, input.href);
+
   const content = composePage({
     node,
     body,
@@ -612,6 +661,7 @@ function renderPageFor(input: {
     lookup: (treePath) => tree.byPath.get(treePath),
     theme,
     layout: config.layout satisfies PageLayout,
+    ...(header ? { header } : {}),
     navRootId: input.navRootId,
     ...(input.banner ? { banner: input.banner } : {}),
   });

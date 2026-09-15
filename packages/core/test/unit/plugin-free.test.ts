@@ -309,3 +309,92 @@ test('the sheet still stacks over its own scrim', () => {
   assert.ok(nav > scrim, `nav ${nav} should stack over scrim ${scrim}`);
   assert.ok(scrim > bar, `scrim ${scrim} should stack over bar ${bar}`);
 });
+
+/* ---------------------------------------------------------------------- *
+ * The site header
+ * ---------------------------------------------------------------------- */
+
+/** A header with one entry on each end, and one that nests. */
+const header = {
+  title: 'Fixture',
+  href: '/docs/',
+  items: [
+    { label: 'Docs', href: '/docs/intro/', position: 'left' as const },
+    {
+      label: 'More',
+      href: '',
+      position: 'left' as const,
+      items: [{ label: 'Spec', href: 'https://example.test/spec' }],
+    },
+    { label: 'Repository', href: 'https://example.test/repo', position: 'right' as const },
+  ],
+};
+
+/** Compose with the header turned on. */
+function composeWithHeader(overrides: Partial<typeof DEFAULT_LAYOUT> = {}): string {
+  return composePage({
+    node: page(),
+    body: '<!-- wp:paragraph -->\n<p>Body.</p>\n<!-- /wp:paragraph -->',
+    links: new Set<string>(),
+    href: (path) => `/docs/${path}`,
+    lookup: () => undefined,
+    theme: createTheme({ classPrefix: 'x' }),
+    layout: { ...DEFAULT_LAYOUT, header: true, ...overrides },
+    header,
+  });
+}
+
+/** The markup only. The class names appear in the stylesheet too. */
+function markupOf(composed: string): string {
+  return composed.slice(composed.indexOf('<!-- wp:columns'));
+}
+
+test('there is no header unless the layout asks for one', () => {
+  // It adds a row to every stored page, and a site whose theme already carries
+  // a header does not want a second.
+  assert.equal(DEFAULT_LAYOUT.header, false);
+  assert.equal(markupOf(composeWithHeader({ header: false })).includes('x-docs-header'), false);
+});
+
+test('the header carries the wordmark and the menu the site declared', () => {
+  const composed = composeWithHeader();
+
+  assert.ok(composed.includes('x-docs-header-title'), 'no wordmark');
+  assert.ok(composed.includes('>Fixture<'), 'the title is missing');
+  assert.ok(composed.includes('href="/docs/intro/">Docs<'), 'the first entry is missing');
+  assert.ok(composed.includes('href="https://example.test/repo">Repository<'), 'the external entry is missing');
+});
+
+test('entries keep the end of the bar the site put them on', () => {
+  const composed = markupOf(composeWithHeader());
+  const start = composed.indexOf('x-docs-header-start');
+  const end = composed.indexOf('x-docs-header-end');
+
+  assert.ok(start < end, 'the two lists are in the wrong order');
+  assert.ok(composed.slice(start, end).includes('>Docs<'), 'Docs should be on the left');
+  assert.ok(composed.slice(end).includes('>Repository<'), 'Repository should be on the right');
+});
+
+test('an entry with children nests them rather than flattening', () => {
+  const composed = composeWithHeader();
+
+  assert.ok(composed.includes('x-docs-header-group'), 'no group');
+  assert.ok(composed.includes('x-docs-header-menu'), 'no nested list');
+  // It groups rather than links, so it is a span and not an anchor.
+  assert.ok(composed.includes('<span>More</span>'), composed.slice(composed.indexOf('More') - 60, composed.indexOf('More') + 20));
+});
+
+test('the header opens with a control of its own, not the navigation’s', () => {
+  // Both can be open at once, so sharing an id would tie them together.
+  const composed = composeWithHeader();
+
+  assert.ok(composed.includes('for="x-docs-header-toggle"'), 'no header control');
+  assert.ok(composed.includes('for="x-docs-nav-toggle"'), 'the navigation control went missing');
+  assert.notEqual('x-docs-header-toggle', 'x-docs-nav-toggle');
+});
+
+test('the header sits above the breadcrumb row', () => {
+  const composed = markupOf(composeWithHeader());
+
+  assert.ok(composed.indexOf('x-docs-header') < composed.indexOf('x-docs-bar'), 'wrong order');
+});

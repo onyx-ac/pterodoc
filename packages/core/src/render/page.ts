@@ -51,6 +51,13 @@ export interface PageLayout {
   childIndex: 'auto' | 'always' | 'never';
   /** Offer a control that opens the navigation on a small screen. */
   navToggle: boolean;
+  /**
+   * Put the site's own header above the breadcrumb row.
+   *
+   * Off by default: it adds a row to every stored page, and a site whose theme
+   * already carries one does not want a second.
+   */
+  header: boolean;
 }
 
 /** The layout used when a site configures none. */
@@ -64,7 +71,34 @@ export const DEFAULT_LAYOUT: PageLayout = {
   pagination: true,
   childIndex: 'auto',
   navToggle: true,
+  header: false,
 };
+
+/** One entry in the header's menu. */
+export interface HeaderLink {
+  /** What it reads. */
+  label: string;
+  /** Where it points; empty for an entry that only groups others. */
+  href: string;
+  /** Entries below it. */
+  items?: HeaderLink[] | undefined;
+}
+
+/**
+ * The header, as the renderer needs it.
+ *
+ * Deliberately not the model's own navbar type: `render/` may not import from
+ * `model/`, and turning one into the other is the reconciler's job -- which is
+ * also where a URL stops being the Docusaurus site's and becomes the target's.
+ */
+export interface HeaderLike {
+  /** The wordmark. */
+  title: string;
+  /** Where the wordmark points. */
+  href: string;
+  /** Entries, in declaration order, each knowing which end it belongs on. */
+  items: (HeaderLink & { position: 'left' | 'right' })[];
+}
 
 /** Everything needed to compose one page. */
 export interface ComposePageInput {
@@ -80,6 +114,8 @@ export interface ComposePageInput {
   lookup: (treePath: string) => PageLike | undefined;
   /** Class names and strings. */
   theme: Theme;
+  /** The site's own header, when the layout asks for one. */
+  header?: HeaderLike | undefined;
   /** How the page is laid out. */
   layout: PageLayout;
   /** Id of the page the navigation block should list from. */
@@ -280,6 +316,67 @@ function renderDocsBar(input: ComposePageInput): string {
   );
 }
 
+/** One menu entry, and anything nested under it. */
+function renderHeaderLink(item: HeaderLink, theme: Theme): string {
+  const label = escapeText(item.label);
+  const self = item.href
+    ? `<a href="${escapeText(item.href)}">${label}</a>`
+    : `<span>${label}</span>`;
+
+  if (!item.items || item.items.length === 0) return `<li>${self}</li>`;
+
+  // A dropdown is a nested list and nothing more. It opens on hover and on
+  // focus, both from the stylesheet, so it needs no script and it is still
+  // reachable from a keyboard.
+  const children = item.items.map((child) => renderHeaderLink(child, theme)).join('');
+  return (
+    `<li class="${theme.cls('docs-header-group')}">${self}` +
+    `<ul class="${theme.cls('docs-header-menu')}">${children}</ul></li>`
+  );
+}
+
+/**
+ * The site's own header: the wordmark, and the menu it declares.
+ *
+ * Sits above the breadcrumb row rather than above the columns, so it lines up
+ * with the document rather than spanning the navigation as well.
+ *
+ * The menu collapses to one control on a narrow screen, opened by a checkbox
+ * the same way the navigation is -- so it works with no JavaScript, and needs
+ * its own id because both can be open at once.
+ */
+function renderHeader(input: ComposePageInput): string {
+  const { theme, header } = input;
+  if (!input.layout.header || !header || header.items.length === 0) return '';
+
+  const side = (position: 'left' | 'right'): string =>
+    header.items
+      .filter((item) => item.position === position)
+      .map((item) => renderHeaderLink(item, theme))
+      .join('');
+
+  const id = theme.cls('docs-header-toggle');
+  const title = header.href
+    ? `<a href="${escapeText(header.href)}">${escapeText(header.title)}</a>`
+    : escapeText(header.title);
+
+  const markup =
+    `<div class="${theme.cls('docs-header')}">` +
+    `<span class="${theme.cls('docs-header-title')}">${title}</span>` +
+    `<input type="checkbox" id="${id}" class="${theme.cls('docs-header-check')}">` +
+    `<label class="${theme.cls('docs-header-label')}" for="${id}">` +
+    `<span class="${theme.cls('docs-header-icon')}" aria-hidden="true"></span>` +
+    `<span class="${theme.cls('docs-header-text')}">${escapeText(theme.text('headerToggle'))}</span>` +
+    `</label>` +
+    `<label class="${theme.cls('docs-header-scrim')}" for="${id}" aria-hidden="true"></label>` +
+    `<nav class="${theme.cls('docs-header-nav')}">` +
+    `<ul class="${theme.cls('docs-header-start')}">${side('left')}</ul>` +
+    `<ul class="${theme.cls('docs-header-end')}">${side('right')}</ul>` +
+    `</nav></div>`;
+
+  return serializeBlock('html', undefined, markup);
+}
+
 /** Compose the stored content of one page. */
 export function composePage(input: ComposePageInput): string {
   const { node, theme, layout } = input;
@@ -296,6 +393,7 @@ export function composePage(input: ComposePageInput): string {
 
   const main = joinBlocks([
     input.banner ?? '',
+    renderHeader(input),
     renderDocsBar(input),
     input.body,
     index,

@@ -16,7 +16,9 @@ import type {
   DocAuthor,
   DocsInstance,
   DocsVersion,
+  NavbarItem,
   SidebarItem,
+  SiteNavbar,
   SiteModel,
 } from '@pterodocs/core/model';
 
@@ -307,6 +309,135 @@ function toBlogInstance(
   };
 }
 
+/**
+ * The first document a sidebar leads to.
+ *
+ * A `docSidebar` entry in the navbar names a sidebar, not a page; Docusaurus
+ * resolves it to whatever that sidebar opens on. Doing the same here is what
+ * keeps the published header pointing where the site's own header points.
+ *
+ * @param instances Everything loaded, since a navbar may name any instance's sidebar.
+ * @param sidebarId The sidebar the entry names.
+ * @returns The permalink, or empty when nothing was found.
+ */
+function firstDocOf(instances: DocsInstance[], sidebarId: string): string {
+  for (const instance of instances) {
+    for (const version of instance.versions) {
+      const items = version.sidebars[sidebarId];
+      if (!items) continue;
+
+      // Depth first: a category's own link, then whatever it contains.
+      const walk = (entries: SidebarItem[]): string => {
+        for (const entry of entries) {
+          if (entry.type === 'doc' || entry.type === 'ref') {
+            const doc = version.docs.find((candidate) => candidate.id === entry.id);
+            if (doc) return doc.permalink;
+          }
+          if (entry.type === 'category') {
+            if (entry.link?.type === 'generated-index') return entry.link.permalink;
+            const found = walk(entry.items);
+            if (found) return found;
+          }
+        }
+        return '';
+      };
+
+      const found = walk(items);
+      if (found) return found;
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Turn one navbar entry into ours.
+ *
+ * Docusaurus accepts several shapes here, and a few of them describe behaviour
+ * rather than a destination — a search box, a locale switcher, a version
+ * dropdown. Those have no counterpart in a published page, so they come back
+ * with no label and are dropped by the caller, which reports them.
+ *
+ * @param raw One entry from `themeConfig.navbar.items`.
+ * @param baseUrl The site's base URL, for a site-relative `to`.
+ * @param instances Everything loaded, for resolving a `docSidebar`.
+ */
+function toNavbarItem(
+  raw: Record<string, unknown>,
+  baseUrl: string,
+  instances: DocsInstance[],
+): NavbarItem | undefined {
+  const type = String(raw['type'] ?? '');
+  const label = String(raw['label'] ?? raw['title'] ?? '');
+  const position = raw['position'] === 'right' ? 'right' : 'left';
+
+  // Entries that are a control rather than a link.
+  if (['search', 'localeDropdown', 'docsVersionDropdown', 'html', 'custom'].includes(type)) {
+    return undefined;
+  }
+  if (!label) return undefined;
+
+  const children = Array.isArray(raw['items'])
+    ? (raw['items'] as Record<string, unknown>[])
+        .map((child) => toNavbarItem(child, baseUrl, instances))
+        .filter((child): child is NavbarItem => child !== undefined)
+    : [];
+
+  let href = '';
+  if (typeof raw['href'] === 'string') {
+    href = raw['href'];
+  } else if (typeof raw['to'] === 'string') {
+    const to = raw['to'];
+    href = to.startsWith('/') ? `${baseUrl.replace(/\/+$/, '')}${to}` : to;
+  } else if (type === 'docSidebar' && typeof raw['sidebarId'] === 'string') {
+    href = firstDocOf(instances, raw['sidebarId']);
+  } else if (type === 'doc' && typeof raw['docId'] === 'string') {
+    const id = raw['docId'];
+    for (const instance of instances) {
+      for (const version of instance.versions) {
+        const doc = version.docs.find((candidate) => candidate.id === id);
+        if (doc) href = doc.permalink;
+      }
+    }
+  }
+
+  return { label, href, position, ...(children.length > 0 ? { items: children } : {}) };
+}
+
+/**
+ * The site's navigation bar, as configured.
+ *
+ * @param siteConfig Docusaurus's own configuration.
+ * @param baseUrl The site's base URL.
+ * @param instances Everything loaded, for resolving entries that name a sidebar.
+ */
+function toNavbar(
+  siteConfig: Record<string, unknown>,
+  baseUrl: string,
+  instances: DocsInstance[],
+  warn: (message: string) => void,
+): SiteNavbar | undefined {
+  const navbar = get<Record<string, unknown> | undefined>(siteConfig, ['themeConfig', 'navbar'], undefined);
+  if (!navbar) return undefined;
+
+  const raw = Array.isArray(navbar['items']) ? (navbar['items'] as Record<string, unknown>[]) : [];
+  const items = raw
+    .map((entry) => toNavbarItem(entry, baseUrl, instances))
+    .filter((entry): entry is NavbarItem => entry !== undefined);
+
+  // A link with nowhere to go is worse than no link. Say which, rather than
+  // publishing a header entry that does nothing when clicked.
+  const unresolved = (entry: NavbarItem): string[] => [
+    ...(entry.href === '' && !entry.items ? [entry.label] : []),
+    ...(entry.items ?? []).flatMap(unresolved),
+  ];
+  for (const label of items.flatMap(unresolved)) {
+    warn(`The navbar entry "${label}" names a destination that could not be resolved, so the header omits its link.`);
+  }
+
+  return { title: String(navbar['title'] ?? siteConfig['title'] ?? ''), items };
+}
+
 /** Keep only the versions the caller asked for. */
 function selectVersions(versions: DocsVersion[], selector: LoadModelOptions['versions']): DocsVersion[] {
   if (selector === 'all') return versions;
@@ -376,6 +507,7 @@ export function toSiteModel(site: LoadedSite, options: LoadModelOptions): SiteMo
     siteTitle: String(siteConfig['title'] ?? ''),
     staticDirs: staticDirectories.map((dir) => path.resolve(siteDir, dir)),
     docusaurusVersion: props.siteMetadata.docusaurusVersion,
+    navbar: toNavbar(siteConfig, props.baseUrl, [...instances, ...blogInstances], options.warn ?? ((): void => {})),
     instances: [...instances, ...blogInstances],
   };
 }

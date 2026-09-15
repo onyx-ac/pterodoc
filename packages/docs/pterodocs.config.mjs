@@ -24,6 +24,8 @@ export default {
     status: 'publish',
   },
 
+  layout: { header: true },
+
   render: {
     classPrefix: 'pterodocs',
     unpublishedLinks: 'site',

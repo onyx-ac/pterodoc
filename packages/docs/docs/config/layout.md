@@ -35,6 +35,34 @@ unstyled outline. Because the pages then escape the theme's page padding, the st
 pterodocs emits puts that padding back — using the theme's own root-padding variables
 where the theme defines them.
 
+## `header`
+
+**Default `false`.** Puts the site's own header above the breadcrumb row: the wordmark on
+the left, and the menu on the right.
+
+It is not declared here. The entries come from **`themeConfig.navbar` in your Docusaurus
+config** — the same rule as sidebars and permalinks, so the published header matches the
+one on your Docusaurus site without being written twice.
+
+| Docusaurus entry | Published as |
+| :--- | :--- |
+| `{ type: 'docSidebar', sidebarId }` | A link to the page that sidebar opens on |
+| `{ to: '/blog' }` | A link, resolved against the site's base URL |
+| `{ href: 'https://…' }` | The link as written |
+| `{ type: 'dropdown', items }` | A nested list, open on hover and on focus |
+| `search`, `localeDropdown`, `docsVersionDropdown` | Left out — they are behaviour, not a destination |
+
+A destination that names a page this run published becomes that page's WordPress URL;
+anything else keeps the address it had. An entry whose destination cannot be worked out is
+reported rather than published as a link that goes nowhere.
+
+On a narrow screen the menu collapses to one control that opens a sheet — a checkbox and a
+label, so it needs no JavaScript. It has an id of its own, because the header and the
+navigation can be open at the same time.
+
+Off by default: it adds a row to every stored page, and a site whose theme already carries
+a header does not want a second.
+
 ## `nav`
 
 **Default `'page-list'`.** The navigation column is a `core/page-list` block pointed at the

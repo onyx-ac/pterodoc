@@ -160,3 +160,48 @@ test('a blog builds a page tree exactly as documentation does', { skip }, async 
     ['second-release', 'first-release'],
   );
 });
+
+/* ---------------------------------------------------------------------- *
+ * The navigation bar
+ * ---------------------------------------------------------------------- */
+
+test('the site’s own navigation bar is read rather than re-declared', { skip }, async () => {
+  const model = await loadModel({ siteDir });
+
+  assert.equal(model.navbar?.title, 'Fixture');
+  assert.deepEqual(
+    model.navbar?.items.map((item) => `${item.position}:${item.label}`),
+    ['left:Docs', 'left:More', 'right:Repository'],
+  );
+});
+
+test('an entry naming a sidebar resolves to the page that sidebar opens on', { skip }, async () => {
+  // Docusaurus resolves `docSidebar` to whatever the sidebar leads to, and the
+  // published header has to point where the site's own header points.
+  const model = await loadModel({ siteDir });
+  const docs = model.navbar?.items.find((item) => item.label === 'Docs');
+
+  assert.equal(docs?.href, '/base/documentation/');
+});
+
+test('a dropdown keeps its children, each resolved on its own terms', { skip }, async () => {
+  const model = await loadModel({ siteDir });
+  const more = model.navbar?.items.find((item) => item.label === 'More');
+
+  assert.deepEqual(
+    more?.items?.map((child) => [child.label, child.href]),
+    [
+      ['Release notes', '/base/news'],
+      ['Spec', 'https://example.test/spec'],
+    ],
+  );
+});
+
+test('an entry that is a control rather than a link is left out', { skip }, async () => {
+  // A search box, a locale switcher, a version dropdown: behaviour, with no
+  // counterpart in a published page.
+  const model = await loadModel({ siteDir });
+
+  assert.equal(model.navbar?.items.some((item) => item.label === ''), false);
+  assert.equal(model.navbar?.items.length, 3, 'the search entry should not be one of them');
+});

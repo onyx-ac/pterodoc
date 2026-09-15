@@ -10,6 +10,8 @@ export type {
   DocNeighbour,
   DocsInstance,
   DocsVersion,
+  NavbarItem,
+  SiteNavbar,
   SidebarCategoryItem,
   SidebarCategoryLink,
   SidebarDocItem,

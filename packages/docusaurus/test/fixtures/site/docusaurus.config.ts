@@ -14,6 +14,27 @@ const config: Config = {
   onBrokenMarkdownLinks: 'ignore',
   markdown: { format: 'detect' },
   i18n: { defaultLocale: 'en', locales: ['en'] },
+  themeConfig: {
+    navbar: {
+      title: 'Fixture',
+      items: [
+        { type: 'docSidebar', sidebarId: 'main', position: 'left', label: 'Docs' },
+        {
+          type: 'dropdown',
+          label: 'More',
+          position: 'left',
+          items: [
+            { to: '/news', label: 'Release notes' },
+            { href: 'https://example.test/spec', label: 'Spec' },
+          ],
+        },
+        // A control rather than a link: it has no counterpart in a page.
+        { type: 'search', position: 'right' },
+        { href: 'https://example.test/repo', label: 'Repository', position: 'right' },
+      ],
+    },
+  },
+
   presets: [
     [
       'classic',

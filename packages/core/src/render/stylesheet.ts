@@ -66,6 +66,26 @@ const TEMPLATE = `
 :where(.{p}-docs-nav) a:hover{background:var(--{p}-surface)}
 :where(.{p}-docs-nav) .current-menu-item>a{background:color-mix(in oklab,currentColor 10%,transparent);font-weight:600}
 
+/* The site's own header, above the breadcrumb row. The control that opens it
+   is off-screen rather than display:none, so a keyboard can still reach it. */
+:where(.{p}-docs-header){display:flex;align-items:center;gap:1rem;padding-block:.6rem;border-bottom:1px solid var(--{p}-rule)}
+:where(.{p}-docs-header-title){flex:0 0 auto;font-weight:700}
+:where(.{p}-docs-header-title) a{color:inherit;text-decoration:none}
+.{p}-docs-header-check{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+:where(.{p}-docs-header-label),:where(.{p}-docs-header-scrim){display:none}
+:where(.{p}-docs-header-nav){flex:1 1 auto;display:flex;align-items:center;gap:.5rem}
+:where(.{p}-docs-header-start),:where(.{p}-docs-header-end){display:flex;align-items:center;gap:.15rem;margin:0;padding:0;list-style:none}
+:where(.{p}-docs-header-end){margin-inline-start:auto}
+:where(.{p}-docs-header-nav) li{margin:0}
+:where(.{p}-docs-header-nav) :is(a,span){display:block;padding:.3rem .55rem;border-radius:6px;color:inherit;text-decoration:none;font-size:.9375em;white-space:nowrap}
+:where(.{p}-docs-header-nav) a:hover{background:var(--{p}-surface)}
+
+/* A dropdown is a nested list. It opens on hover and on focus, both from here,
+   so it needs no script and stays reachable from a keyboard. */
+.{p}-docs-header-group{position:relative}
+.{p}-docs-header-menu{display:none;position:absolute;inset-inline-start:0;top:100%;z-index:1000;min-width:12rem;margin:0;padding:.25rem;list-style:none;background:var(--{p}-surface-solid);border:1px solid var(--{p}-rule);border-radius:var(--{p}-radius);box-shadow:0 6px 24px color-mix(in oklab,#000 12%,transparent)}
+.{p}-docs-header-group:is(:hover,:focus-within)>.{p}-docs-header-menu{display:block}
+
 /* Code. */
 :where(.{p}-docs-main) .wp-block-code{background:var(--{p}-surface);border:1px solid var(--{p}-rule);border-radius:var(--{p}-radius);padding:1rem 1.15rem;overflow-x:auto;font-family:var(--{p}-mono);font-size:.875em;line-height:1.6;tab-size:2}
 :where(.{p}-docs-main) .wp-block-code code{font-family:inherit;white-space:pre}
@@ -123,6 +143,19 @@ const TEMPLATE = `
 .wp-block-columns.{p}-docs{display:block}
 
 /* The bar: where you are, and the way in. Fixed, so both stay reachable. */
+/* The menu becomes one control, and a sheet -- the same checkbox mechanics the
+   navigation uses, with an id of its own because both can be open at once. */
+.{p}-docs-header-label{display:inline-flex;align-items:center;gap:.5rem;margin-inline-start:auto;flex:0 0 auto;padding:.4rem .7rem;border:1px solid var(--{p}-rule);border-radius:999px;font-size:.9375em;cursor:pointer;user-select:none}
+.{p}-docs-header-icon{position:relative;width:1rem;height:2px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}
+.{p}-docs-header-nav{position:fixed;inset-inline:0;top:auto;bottom:0;z-index:999;display:block;max-height:min(80vh,44rem);max-height:min(80dvh,44rem);overflow-y:auto;overscroll-behavior:contain;padding:1.25rem var(--{p}-gutter) calc(1.25rem + env(safe-area-inset-bottom));background:var(--{p}-surface-solid);border-top:1px solid var(--{p}-rule);border-radius:16px 16px 0 0;box-shadow:0 -8px 32px color-mix(in oklab,#000 22%,transparent);transform:translateY(101%);visibility:hidden;transition:transform .24s cubic-bezier(.2,0,0,1),visibility .24s}
+.{p}-docs-header-start,.{p}-docs-header-end{display:block;margin:0}
+.{p}-docs-header-end{margin-inline-start:0}
+.{p}-docs-header-nav :is(a,span){padding:.5rem .25rem;font-size:1em}
+/* Nested entries are simply open: there is room, and a hover menu is no use here. */
+.{p}-docs-header-menu{display:block;position:static;min-width:0;margin-inline-start:.75rem;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
+.{p}-docs-header-check:checked~.{p}-docs-header-nav{transform:none;visibility:visible}
+.{p}-docs-header-check:checked~.{p}-docs-header-scrim{display:block;position:fixed;inset:0;z-index:998;background:color-mix(in oklab,#000 45%,transparent);cursor:pointer}
+
 .{p}-docs:has(.{p}-docs-toggle) .{p}-docs-bar{position:sticky;top:0;z-index:30;margin-inline:calc(-1 * var(--{p}-gutter));display:flex;align-items:center;gap:.75rem;min-height:3.25rem;padding:.5rem clamp(.75rem,4vw,1.25rem);background:var(--{p}-surface-solid,Canvas);border-bottom:1px solid var(--{p}-rule)}
 .{p}-docs:has(.{p}-docs-toggle) .{p}-docs-bar .{p}-docs-breadcrumb{min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;white-space:nowrap}
 .{p}-docs:has(.{p}-docs-toggle) .{p}-docs-bar .{p}-docs-breadcrumb::-webkit-scrollbar{display:none}
