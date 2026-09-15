@@ -35,6 +35,7 @@ the stored output disagree, and every run from now on will rewrite every page.
 ```
 --dry-run             Plan and render, change nothing
 --prune               Trash pages with no source document
+--blog                Publish the blog as posts, rather than the documentation
 --only <prefix>       Restrict writes to pages under <prefix>
 --offline             Render only; never open a session
 --no-media            Skip uploads; leave image URLs as written
@@ -68,6 +69,20 @@ kept /docs/hand-written/ — not written by pterodocs
 
 `--prune` is ignored when `--only` is set, because a restricted run has not seen enough of
 the tree to judge what is missing.
+
+## `--blog`
+
+Publishes the site's blog as ordinary WordPress posts instead of publishing the
+documentation. One run publishes one tree, so this is a run of its own:
+
+```bash
+pterodocs sync              # the documentation, as pages
+pterodocs sync --blog       # the blog, as posts
+```
+
+It needs a [`blog`](../config/blog) section saying which category the posts are filed under.
+See that page for what a post does and does not get, and why its URL is the site's to decide
+rather than yours.
 
 ## `--only <prefix>`
 

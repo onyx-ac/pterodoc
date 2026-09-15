@@ -19,7 +19,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Configuration',
       link: { type: 'doc', id: 'config/index' },
-      items: ['config/site', 'config/target', 'config/layout', 'config/render', 'config/llms'],
+      items: ['config/site', 'config/target', 'config/layout', 'config/render', 'config/blog', 'config/llms'],
     },
     {
       type: 'category',

@@ -30,11 +30,45 @@
   "unknown" rather than guessing when the served page cannot be identified, and
   never fails a publish.
 
-- **A Docusaurus blog can be read into the model**, as an instance whose single
-  synthetic version has a sidebar of its posts, newest first — so the page tree,
-  the reconciler and the renderer treat it exactly as they treat documentation.
-  `Doc` gains `date` and `authors`. Off unless asked. Nothing publishes it yet;
-  that is the next release.
+- **`pterodocs sync --blog` publishes the site's blog as WordPress posts.** A
+  Docusaurus blog reads into the model as an instance whose single synthetic
+  version has a sidebar of its posts, newest first, so the page tree, the
+  reconciler and the renderer treat it exactly as they treat documentation.
+
+  It is published as ordinary posts — the built-in type, in the site's own feed
+  and RSS and categories — so nothing has to be registered and the two ends
+  cannot disagree about a post type neither of them invented. The consequence
+  is that a post's URL belongs to the site: it sits wherever the permalink
+  structure puts it, and nothing can move it under the documentation. What can
+  line the two up is the category, which is the only hierarchy a post has, so
+  the posts are filed under one built from `target.root`: `/products/docstack`
+  becomes Products > DocStack > Release notes. Each level is created if missing
+  and matched by name within its parent.
+
+  A post carries the date its front matter gives, sent as `date_gmt` so two
+  sites in different timezones agree about the same instant. One dated ahead of
+  now is scheduled rather than published, which WordPress does on its own and
+  the run says out loud. Front-matter tags become real tags, existing terms
+  reused and missing ones created; a tag the account cannot create is reported
+  and the post goes out without it.
+
+  Authors are read and deliberately not published. WordPress renders a byline
+  itself, from the account that wrote the post, so a second one would repeat or
+  contradict it — and mapping a name to a user means creating or matching
+  accounts, which a publish does not do. The run says so once.
+
+  The blog writes to `.pterodocs/blog/`, because writing the artefacts clears
+  the directory they go into.
+
+- **The plugin registers an ownership marker on published posts.** A post
+  carries no generated layout to be recognised by — no navigation column, no
+  breadcrumb — so without it nothing could tell later which posts in a blog
+  pterodocs wrote, and `--prune` and `purge` would leave them all standing. The
+  blog is not pterodocs's collection, so that marker is also the only thing
+  between a prune and somebody else's writing: only marked posts are ever
+  considered. WordPress ignores metadata it has no registration for rather than
+  refusing it, so a run against a site without the plugin publishes perfectly
+  well and stores nothing — the run checks the first write and says so.
 
 - **pterodocs has its own documentation**, published by pterodocs, at
   `/products/pterodocs/docs/`.

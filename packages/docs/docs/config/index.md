@@ -33,6 +33,7 @@ Everything above is a default except `sidebars` and `root`.
 | [`target`](target) | Where they go, and how: path, status, credentials, retries |
 | [`layout`](layout) | The shape of each published page: columns, navigation, breadcrumb, pagination |
 | [`render`](render) | How markdown becomes blocks: class prefix, stylesheet, highlighting, link policy |
+| [`blog`](blog) | Publishing the site's blog as posts, under `--blog` |
 | [`llms`](llms) | `llms.txt` and `llms-full.txt` |
 | `mdx` | `onUnknown`: `report` (default), `keep` or `drop`, for JSX with no translation |
 | `media` | `upload`, `uploadRemote`, `onMissing`, `slugPrefix` |
