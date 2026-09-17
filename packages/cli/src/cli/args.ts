@@ -60,7 +60,9 @@ Output
   --help, --version
 
 Credentials come from the environment: WP_URL, WP_USER, WP_APP_PASSWORD.
-Without them every command still renders and reports what it would have done.`;
+Without them every command still renders and reports what it would have done.
+
+Documentation: https://onyx.ac/products/pterodocs/docs/`;
 
 /** Flags after parsing. */
 export interface ParsedArgs {

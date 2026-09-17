@@ -9,4 +9,6 @@ You probably want the [`pterodocs`](https://www.npmjs.com/package/pterodocs) pac
 instead. This one is what a source package (`@pterodocs/docusaurus`) or a target package
 (`@pterodocs/wordpress`) builds on.
 
+The documentation for all of pterodocs is at <https://onyx.ac/products/pterodocs/docs/>.
+
 Licensed CC-BY-SA-4.0.

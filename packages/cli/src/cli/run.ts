@@ -379,6 +379,8 @@ async function commandInit(config: ResolvedConfig, reporter: Reporter): Promise<
     `import { defineConfig } from 'pterodocs';
 
 export default defineConfig({
+  // Every option, its default and what reads it:
+  // https://onyx.ac/products/pterodocs/docs/config/
   site: {
     // Sidebars to publish. A document no listed sidebar reaches is not published.
     sidebars: 'all',

@@ -105,6 +105,11 @@
   injected its own navigation trigger on top of the one pterodocs writes into
   the content, giving a reader two ways to open one menu.
 
+- **Every published package points at the documentation.** The npm packages'
+  `homepage`, each README, `pterodocs --help`, the starter config `init` writes,
+  and the WordPress plugin's header and readme all name
+  <https://onyx.ac/products/pterodocs/docs/>.
+
 ### Fixed
 
 - The block theme's own `margin-top` on `#wp--skip-link--target`, and the inline

@@ -18,6 +18,9 @@ full-width layout, all drawn from your theme's own palette.
 WordPress as ordinary Gutenberg blocks. This plugin makes those pages look and
 behave like documentation.
 
+The plugin is documented at https://onyx.ac/products/pterodocs/docs/plugin/ and
+pterodocs itself at https://onyx.ac/products/pterodocs/docs/.
+
 It registers **no block types**. Everything it does is layered over the core
 blocks pterodocs already writes, which has one consequence worth stating plainly:
 deactivate the plugin and your documentation is still there, still readable and
@@ -116,7 +119,8 @@ sheet's trigger is not shown at all unless the script is running.
 1. Upload the plugin folder to `/wp-content/plugins/`, or install the zip from
    Plugins, Add New, Upload Plugin.
 2. Activate it.
-3. Visit Settings, pterodocs if you want to change any default.
+3. Visit Settings, pterodocs if you want to change any default. Each one is
+   described at https://onyx.ac/products/pterodocs/docs/plugin/settings/.
 
 == Build ==
 
